@@ -1,0 +1,16 @@
+{
+  "pet_name": "라이미",
+  "energy": 95.782525100708,
+  "max_energy": 150.0,
+  "hunger": 53.37253944396975,
+  "fun": 65.18002868652344,
+  "mood": 65.62542527436867,
+  "stats": {
+    "power": 0,
+    "cute": 5,
+    "fun": 0
+  },
+  "inventory": {},
+  "money": 0,
+  "last_face": "normal01"
+}

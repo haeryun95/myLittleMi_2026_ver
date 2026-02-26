@@ -1,0 +1,36 @@
+{
+  "items": {
+    "snack_cookie": {
+      "name": "쿠키 간식",
+      "price": 300,
+      "description": "달콤한 쿠키야!",
+      "effects": {
+        "hunger": 12,
+        "fun": 2,
+        "mood": 1
+      },
+      "icon": "asset/icon/snack_cookie.png"
+    },
+
+    "energy_drink": {
+      "name": "에너지 음료",
+      "price": 800,
+      "description": "잠이 확 깨는 느낌!",
+      "effects": {
+        "energy": 20,
+        "mood": -2
+      },
+      "icon": "asset/icon/energy_drink.png"
+    },
+
+    "study_book": {
+      "name": "공부 참고서",
+      "price": 1200,
+      "description": "흥미도를 조금 올려줘.",
+      "effects": {
+        "interest": 3
+      },
+      "icon": "asset/icon/book.png"
+    }
+  }
+}

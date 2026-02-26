@@ -1,35 +1,25 @@
-from typing import Dict, Any
+"""
+reducer.py - 시간 경과에 따른 상태 decay 로직
+"""
+from state import PetState, clamp
+from config import DECAY_MULT
 
-def apply_ai_result(state, pet, result: Dict[str, Any]):
-    # 1) delta
-    delta = result.get("delta", {})
-    state.apply_delta(delta)
 
-    # 2) face
-    face = result.get("face")
-    if face:
-        state.last_face = face
-        pet.set_face(face, hold_sec=6.0)
+def tick_decay(state: PetState, dt_sec: float = 1.0) -> None:
+    """
+    1초 단위로 호출하는 상태 감소 함수.
+    dt_sec: 경과 시간(초)
+    """
+    rate = DECAY_MULT * dt_sec
 
-    # 3) bubble
-    reply = result.get("reply", "")
-    sec = float(result.get("bubble_sec", 2.2))
-    if reply:
-        pet.say(reply, duration=sec)
+    # 배고픔 증가 (시간이 지날수록 배고파짐)
+    state.hunger = clamp(state.hunger - rate * 0.5)
 
-    # 4) commands
-    for cmd in result.get("commands", []):
-        ctype = cmd.get("type")
+    # 재미 감소
+    state.fun = clamp(state.fun - rate * 0.3)
 
-        if ctype == "SHAKE":
-            pet.start_shake(
-                sec=float(cmd.get("sec", 0.5)),
-                strength=int(cmd.get("strength", 3)),
-            )
-        elif ctype == "JUMP":
-            pet.do_jump(int(cmd.get("strength", 12)))
-        elif ctype == "SET_MODE":
-            pet.set_mode(
-                mode=str(cmd.get("mode", "normal")),
-                sec=float(cmd.get("sec", 1.5)),
-            )
+    # 에너지 감소 (깨어있으면 조금씩 소모)
+    state.energy = clamp(state.energy - rate * 0.2, 0.0, state.max_energy)
+
+    # 기분은 욕구에 의해 간접적으로 변하도록 위임
+    state.update_mood_from_needs(dt_sec=dt_sec)
