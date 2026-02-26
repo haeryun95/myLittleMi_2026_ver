@@ -1,0 +1,47 @@
+{
+    "items": {
+        "coffee": {
+            "name": "커피",
+            "icon": "asset/items/coffee.png",
+            "effects": { "fun": 2 },
+            "rarity": "common",
+            "sell_price": 80
+        },
+        "macaron": {
+            "name": "마카롱",
+            "icon": "asset/items/macaron.png",
+            "effects": { "cute": 3 },
+            "rarity": "uncommon",
+            "sell_price": 180
+        },
+        "protein_bar": {
+            "name": "프로틴바",
+            "icon": "asset/items/protein_bar.png",
+            "effects": { "power": 1, "stamina": 2 },
+            "rarity": "common",
+            "sell_price": 120
+        },
+        "work_gloves": {
+            "name": "작업용 장갑",
+            "icon": "asset/items/gloves.png",
+            "effects": { "power": 2 },
+            "rarity": "uncommon",
+            "sell_price": 260
+        },
+
+        "golden_badge": {
+            "name": "황금 배지",
+            "icon": "asset/items/golden_badge.png",
+            "effects": { "cute": 10, "fun": 5 },
+            "rarity": "rare",
+            "sell_price": 2500
+        },
+        "mysterious_ticket": {
+            "name": "수상한 티켓",
+            "icon": "asset/items/ticket.png",
+            "effects": { "fun": 8 },
+            "rarity": "rare",
+            "sell_price": 1800
+        }
+    }
+}
