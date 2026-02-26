@@ -1,0 +1,161 @@
+QWidget {
+  background: #ffffff;
+  border: 1px solid rgb(255, 217, 217);
+  border-radius: 14px;
+  font-family: "온글잎 박다현체";
+  font-size: 18px;
+}
+
+/* ===== Progress ===== */
+QProgressBar {
+  height: 14px;
+  border: 1px solid #e6e6e6;
+  border-radius: 7px;
+  background: #f5f5f5;
+  text-align: center;
+  color: #444;
+}
+
+QProgressBar::chunk {
+  border-radius: 7px;
+  background: rgb(255, 215, 215);
+}
+
+/* ===== Buttons ===== */
+QPushButton {
+  border: 1px solid #e6e6e6;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fafafa;
+}
+
+QPushButton:hover {
+  background: rgb(246, 221, 221);
+}
+
+/* ===== Labels ===== */
+QLabel {
+  color: #666;
+  border: none;
+  background: transparent;
+}
+
+/* ===== Logs ===== */
+QListWidget {
+  background: #ffffff;
+  border: 1px solid #e6e6e6;
+  border-radius: 12px;
+  padding: 8px;
+}
+
+/* (참고) 가로스크롤은 코드에서 꺼뒀고, 여기서는 아이템 간격만 */
+QListWidget::item {
+  padding: 6px 8px;
+  border-radius: 10px;
+}
+
+/* ===== Input (multiline) ===== */
+QTextEdit {
+  background: #ffffff;
+  border: 1px solid #e6e6e6;
+  border-radius: 14px;
+  padding: 10px 12px;
+  font-size: 18px;
+  color: #333;
+}
+
+QTextEdit:focus {
+  border: 1px solid rgb(255, 215, 215);
+}
+
+/* ===== Optional named labels ===== */
+QLabel#TitleLabel {
+  font-size: 16px;
+  font-weight: 700;
+  color: #444;
+  padding: 6px 2px;
+}
+
+QLabel#BigValueLabel {
+  font-size: 16px;
+  font-weight: 700;
+  color: #444;
+  padding: 8px 2px;
+}
+
+QLabel#HintLabel {
+  color: #888;
+  padding: 6px 2px;
+}
+
+/* =========================
+   🌸 ScrollBar (Pink)
+   ========================= */
+
+/* 세로 스크롤바 기본 */
+QScrollBar:vertical {
+  width: 10px;
+  background: transparent;
+  margin: 8px 4px 8px 4px; /* 위/오른쪽/아래/왼쪽 */
+}
+
+/* 핸들(움직이는 부분) */
+QScrollBar::handle:vertical {
+  background: rgb(255, 215, 215);
+  min-height: 32px;
+  border-radius: 5px;
+}
+
+/* 호버/드래그 시 */
+QScrollBar::handle:vertical:hover {
+  background: rgb(255, 195, 195);
+}
+QScrollBar::handle:vertical:pressed {
+  background: rgb(255, 175, 175);
+}
+
+/* 위/아래 버튼(화살표) 제거 */
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+  height: 0px;
+  background: transparent;
+  border: none;
+}
+
+/* 스크롤바 트랙의 빈 공간 */
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+  background: transparent;
+}
+
+/* 가로 스크롤바도 동일하게(혹시 생기면) */
+QScrollBar:horizontal {
+  height: 10px;
+  background: transparent;
+  margin: 4px 8px 4px 8px;
+}
+
+QScrollBar::handle:horizontal {
+  background: rgb(255, 215, 215);
+  min-width: 32px;
+  border-radius: 5px;
+}
+
+QScrollBar::handle:horizontal:hover {
+  background: rgb(255, 195, 195);
+}
+QScrollBar::handle:horizontal:pressed {
+  background: rgb(255, 175, 175);
+}
+
+QScrollBar::add-line:horizontal,
+QScrollBar::sub-line:horizontal {
+  width: 0px;
+  background: transparent;
+  border: none;
+}
+
+QScrollBar::add-page:horizontal,
+QScrollBar::sub-page:horizontal {
+  background: transparent;
+}
