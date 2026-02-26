@@ -1,14 +1,23 @@
 {
-    "categories": {},
+    "categories": {
+        "cafe": {
+            "name": "카페",
+            "drop_table": [
+                { "id": "coffee", "chance": 0.45, "min": 1, "max": 2 },
+                { "id": "macaron", "chance": 0.12, "min": 1, "max": 1 },
+                { "id": "golden_ticket", "chance": 0.01, "min": 1, "max": 1 }
+            ]
+        }
+    },
     "places": [
         {
             "id": "cafe_basic",
             "name": "동네 카페 알바",
             "category": "cafe",
             "thumb": "asset/jobs/cafe.png",
-            "requirements": { "cute": 5, "stamina": 10 },
+            "requirements": { "cute": 5, "energy": 10 },
             "reward_money": [300, 700],
-            "delta": { "stamina": -6, "fun": 1 },
+            "delta": { "energy": -6, "fun": 1 },
             "script": [
                 "앞치마를 두르고 주문을 받기 시작했다.",
                 "커피향이 가게에 가득하다…",
@@ -47,9 +56,9 @@
                     "id": "cafe_spill_accident",
                     "name": "커피 쏟음 사고",
                     "chance": 0.08,
-                    "when": { "max_stamina": 8 },
+                    "when": { "max_energy": 8 },
                     "script": ["손이 살짝 떨려서… 커피가 테이블에 와르르!", "급히 닦았지만 얼굴이 화끈거린다…"],
-                    "effects": { "money": [-50, -120], "stamina": -2, "fun": -1 }
+                    "effects": { "money": [-50, -120], "energy": -2, "fun": -1 }
                 },
                 {
                     "id": "cafe_regular_gift",
@@ -65,7 +74,7 @@
                     "name": "피크타임 폭주",
                     "chance": 0.14,
                     "script": ["주문이 연달아 들어온다… 숨 돌릴 틈이 없다!", "머릿속에서 메뉴가 둥둥 떠다닌다… 침착 침착!"],
-                    "effects": { "money": [100, 250], "stamina": -2, "fun": -1 }
+                    "effects": { "money": [100, 250], "energy": -2, "fun": -1 }
                 },
                 {
                     "id": "cafe_lattee_art_success",
@@ -94,7 +103,7 @@
                         {
                             "text": "사장님을 부른다",
                             "script": ["‘잠시만요, 사장님 불러드릴게요.’", "사장님이 매끄럽게 처리했다. 나는 뒤에서 숨을 고른다."],
-                            "effects": { "fun": 0, "stamina": -1 }
+                            "effects": { "fun": 0, "energy": -1 }
                         }
                     ]
                 }

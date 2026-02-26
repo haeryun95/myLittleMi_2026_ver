@@ -9,8 +9,7 @@ import random
 import urllib.request
 import urllib.error
 from pathlib import Path
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, Any, List, Optional, Set, Tuple
 
 # =========================
 # PySide6
@@ -36,16 +35,14 @@ from PySide6.QtWidgets import (
     QSpinBox
 )
 
-
 # =========================
 # ✅ Groq Direct Settings
 # =========================
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_API_KEY = "앱키"
+GROQ_API_KEY = "앱키"  # TODO: 키 넣기
 GROQ_MODEL = "llama-3.1-8b-instant"
 GROQ_MAX_ATTEMPTS = 2
 GROQ_RETRY_DELAY_SEC = 0.6
-
 
 # =========================
 # Paths
@@ -55,7 +52,6 @@ def get_base_dir() -> Path:
         return Path(sys._MEIPASS)
     return Path(__file__).resolve().parent
 
-
 BASE_DIR = get_base_dir()
 ASSET_DIR = BASE_DIR / "asset"
 ANIM_DIR = ASSET_DIR / "animation"
@@ -64,30 +60,24 @@ QSS_PATH = BASE_DIR / "ui.qss"
 BUBBLE_PATH = ASSET_DIR / "speach_bubble.png"
 APP_ICON_PATH = ASSET_DIR / "app.ico"
 
-# ✅ 배경/가구 폴더
+# ✅ 배경/가구
 BG_DIR = ASSET_DIR / "background"
 BG_DEFAULT_PATH = BG_DIR / "default.png"
-
-# ✅ 가구/배경 카탈로그 JSON (여기서 관리)
 FURNITURE_JSON_PATH = BG_DIR / "furniture.json"
+HOUSE_BG_PATH = BG_DIR / "hamsterHouse.png"  # 구버전 호환(필요시)
 
-# ✅ 구버전 호환(필요하면)
-HOUSE_BG_PATH = BG_DIR / "hamsterHouse.png"
+# ✅ 알바/아이템
+JOBS_JSON_PATH = ASSET_DIR / "jobs.json"
+ITEMS_JSON_PATH = ASSET_DIR / "items.json"
 
+# =========================
+# UI/Window Tunings
+# =========================
 HOUSE_WIN_W = 620
 HOUSE_WIN_H = int(HOUSE_WIN_W * 864 / 1184)
 HOUSE_SCALE_CHAR = 0.33
 HOUSE_SCALE_BUBBLE = 0.15
 
-
-def load_qss(app: QApplication):
-    if QSS_PATH.exists():
-        app.setStyleSheet(QSS_PATH.read_text(encoding="utf-8"))
-
-
-# =========================
-# Tuning knobs
-# =========================
 SCALE_CHAR = 0.35
 SCALE_BUBBLE = 0.16
 NORMAL_RANDOM_INTERVAL = 10.0
@@ -113,29 +103,34 @@ SLEEP_DURATION_SEC = 60.0
 SLEEP_RECOVER_ENERGY = 45.0
 
 HUNGRY_WARN_HUNGER = 22.0
-BORED_WARN_JOY = 12.0
+BORED_WARN_FUN = 12.0
 NEEDY_TALK_COOLDOWN_SEC = 18.0
-
 WANDER_INTERVAL_MS_RANGE = (3_000, 7_000)
-
 
 # =========================
 # ✅ House Furniture / Layers
 # =========================
 BG_CATEGORIES = ["wallpaper", "wheel", "house", "deco", "flower"]
-BG_LAYER_ORDER = ["wallpaper", "wheel", "house", "deco", "flower"]  # ✅ 네가 말한 순서
+BG_LAYER_ORDER = ["wallpaper", "wheel", "house", "deco", "flower"]
 
-# ✅ UI 크기(배치창 버튼/썸네일 크게)
 PLACEMENT_PANEL_W = 420
 PLACEMENT_PANEL_H = 520
-THUMB_SIZE = 84  # 썸네일 정사각
-ROW_HEIGHT = 98  # 리스트 한 줄 높이
+THUMB_SIZE = 84
+ROW_HEIGHT = 98
 CAT_BTN_H = 36
 CAT_BTN_MIN_W = 72
 
 SHOP_THUMB_SIZE = 72
 SHOP_ROW_HEIGHT = 92
 
+PINK = "#ff4fa3"
+
+# =========================
+# QSS loader
+# =========================
+def load_qss(app: QApplication):
+    if QSS_PATH.exists():
+        app.setStyleSheet(QSS_PATH.read_text(encoding="utf-8"))
 
 # =========================
 # Helpers
@@ -143,12 +138,18 @@ SHOP_ROW_HEIGHT = 92
 def clamp(v: float, lo: float = 0.0, hi: float = 100.0) -> float:
     return max(lo, min(hi, v))
 
+def safe_read_json(path: Path) -> Optional[dict]:
+    try:
+        if not path.exists():
+            return None
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
 
 def load_folder_pixmaps_as_map(folder: Path, scale: float) -> Dict[str, QPixmap]:
     result: Dict[str, QPixmap] = {}
     if not folder.exists():
         return result
-
     for f in sorted(folder.glob("*.png")):
         p = QPixmap(str(f))
         if p.isNull():
@@ -162,7 +163,6 @@ def load_folder_pixmaps_as_map(folder: Path, scale: float) -> Dict[str, QPixmap]
             )
         result[f.stem] = p
     return result
-
 
 def load_folder_pixmaps_as_list(folder: Path, scale: float) -> List[QPixmap]:
     if not folder.exists():
@@ -182,20 +182,7 @@ def load_folder_pixmaps_as_list(folder: Path, scale: float) -> List[QPixmap]:
         frames.append(p)
     return frames
 
-
-def safe_read_json(path: Path) -> Optional[dict]:
-    try:
-        if not path.exists():
-            return None
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return None
-
-
 def scan_bg_items_fallback() -> Dict[str, Dict[str, Path]]:
-    """
-    JSON이 없을 때 폴더 스캔으로 대충 채움.
-    """
     items: Dict[str, Dict[str, Path]] = {}
     for cat in BG_CATEGORIES:
         folder = BG_DIR / cat
@@ -206,25 +193,7 @@ def scan_bg_items_fallback() -> Dict[str, Dict[str, Path]]:
         items[cat] = m
     return items
 
-
 def load_furniture_catalog() -> Dict[str, List[dict]]:
-    """
-    return:
-      {
-        "wallpaper": [{"id","name","price","file"}, ...],
-        ...
-      }
-
-    ✅ furniture.json 예시(너가 직접 관리):
-    {
-      "wallpaper": [
-        {"id":"hamsterHouse_pink","name":"핑크 벽지","price":900,"file":"wallpaper/hamsterHouse_pink.png"}
-      ],
-      "wheel": [
-        {"id":"wheel_pink","name":"핑크 쳇바퀴","price":700,"file":"wheel/wheel_pink.png"}
-      ]
-    }
-    """
     raw = safe_read_json(FURNITURE_JSON_PATH)
     if isinstance(raw, dict) and raw:
         out: Dict[str, List[dict]] = {cat: [] for cat in BG_CATEGORIES}
@@ -241,35 +210,24 @@ def load_furniture_catalog() -> Dict[str, List[dict]]:
                 file_rel = str(it.get("file", "")).replace("\\", "/").strip()
                 if not iid or not file_rel:
                     continue
-                out[cat].append({
-                    "id": iid,
-                    "name": name,
-                    "price": price,
-                    "file": file_rel,
-                })
+                out[cat].append({"id": iid, "name": name, "price": price, "file": file_rel})
         return out
 
-    # ✅ fallback: 폴더 스캔해서 자동 구성(가격은 임의)
     scanned = scan_bg_items_fallback()
     out2: Dict[str, List[dict]] = {cat: [] for cat in BG_CATEGORIES}
     for cat in BG_CATEGORIES:
         for iid, p in scanned.get(cat, {}).items():
             base_price = {"wallpaper": 900, "wheel": 700, "house": 1200, "deco": 600, "flower": 500}.get(cat, 600)
             price = int(base_price + min(400, len(iid) * 10))
-            # file은 background 기준 상대경로로
             rel = f"{cat}/{p.name}"
             out2[cat].append({"id": iid, "name": iid, "price": price, "file": rel})
     return out2
 
-
 def resolve_bg_path(file_rel: str) -> Path:
     return (BG_DIR / file_rel).resolve()
 
-
-# ✅ 전역 카탈로그(실행 중에도 다시 로드 가능하게 함수로 처리)
 def get_catalog() -> Dict[str, List[dict]]:
     return load_furniture_catalog()
-
 
 # =========================
 # ✅ Groq Direct Call
@@ -280,7 +238,7 @@ def call_groq_chat(payload: dict, timeout_sec: float = 30.0) -> dict:
             "reply": "찍… (AI 키가 없어서 로컬 대답중!)",
             "face": payload.get("state", {}).get("last_face", "normal01"),
             "bubble_sec": 2.2,
-            "delta": {"joy": 1, "mood": 0, "energy": 0, "hunger": 0},
+            "delta": {"fun": 1, "mood": 0, "energy": 0, "hunger": 0},
             "commands": [],
         }
 
@@ -315,7 +273,7 @@ MBTI: ISFP
 ────────────────────────
 [입력 데이터]
 event: { type: CHAT|FEED|PET|PLAY|AUTO, text: string }
-state: hunger/energy/mood/joy/last_face
+state: hunger/energy/max_energy/mood/fun/last_face/pet_name/money
 available_faces: string[]
 
 ────────────────────────
@@ -324,7 +282,7 @@ available_faces: string[]
 "reply": string,
 "face": string,
 "bubble_sec": number,
-"delta": {"joy": number,"mood": number,"energy": number,"hunger": number},
+"delta": {"fun": number,"mood": number,"energy": number,"hunger": number, "max_energy": number?},
 "commands": [
   { "type":"SHAKE", "sec":number, "strength":number } |
   { "type":"JUMP", "strength":number } |
@@ -393,7 +351,7 @@ available_faces: string[]
                 "reply": content or "찍… (대답이 잘 안 나왔어)",
                 "face": payload.get("state", {}).get("last_face", "normal01"),
                 "bubble_sec": 2.2,
-                "delta": {"joy": 1, "mood": 0, "energy": 0, "hunger": 0},
+                "delta": {"fun": 1, "mood": 0, "energy": 0, "hunger": 0},
                 "commands": [],
             }
 
@@ -414,53 +372,151 @@ available_faces: string[]
         "reply": f"(AI 실패) {last_err or 'Unknown error'}",
         "face": payload.get("state", {}).get("last_face", "normal01"),
         "bubble_sec": 3.0,
-        "delta": {"joy": 0, "mood": -1, "energy": 0, "hunger": 0},
+        "delta": {"fun": 0, "mood": -1, "energy": 0, "hunger": 0},
         "commands": [],
     }
-
 
 # =========================
 # State
 # =========================
+def clamp(v: float, lo: float = 0.0, hi: float = 100.0) -> float:
+    return max(lo, min(hi, v))
+
 class PetState:
+    """
+    ✅ mood 유지 + fun 분리
+    ✅ energy/max_energy (stamina 역할)
+    ✅ JobWindow 기대(stats/inventory)도 state가 기본 보유
+    """
+    # 숫자 -> 라벨 구간(원하는대로 수정 가능)
+    MOOD_BANDS: List[Tuple[int, str]] = [
+        (15, "절망"),
+        (30, "우울"),
+        (45, "슬픔"),
+        (55, "무덤덤"),
+        (70, "기분좋음"),
+        (85, "행복"),
+        (101, "기쁨"),  # 상한 포함용
+    ]
+
     def __init__(self):
         self.pet_name = "라이미"
+
+        self.energy = 100.0
+        self.max_energy = 150.0
+
         self.hunger = 60.0
-        self.energy = 70.0
+        self.fun = 70.0
+
+        # ✅ mood는 숫자로 저장 (표시는 라벨로)
         self.mood = 70.0
-        self.joy = 20.0
-        self.last_face = "normal01"
+
+        # 알바/아이템용 능력치(필요한 만큼)
+        self.stats: Dict[str, int] = {
+            "power": 0,
+            "cute": 5,
+            "fun": 0,   # 알바용 보너스(아이템으로 올릴 수 있음)
+        }
+        self.inventory: Dict[str, int] = {}
+
         self.money = 0
+        self.last_face = "normal01"
 
         # ✅ 배경/가구
         self.owned_bg: Dict[str, Set[str]] = {cat: set() for cat in BG_CATEGORIES}
         self.selected_bg: Dict[str, Optional[str]] = {cat: None for cat in BG_CATEGORIES}
 
-    def clamp_all(self):
-        self.hunger = clamp(self.hunger)
-        self.energy = clamp(self.energy)
-        self.mood = clamp(self.mood)
-        self.joy = clamp(self.joy)
+    # -------------------------
+    # ✅ 표시용: 숫자 mood -> 상태 라벨
+    # -------------------------
+    @property
+    def mood_label(self) -> str:
+        v = int(round(clamp(self.mood)))
+        for limit, name in self.MOOD_BANDS:
+            if v < limit:
+                return name
+        return self.MOOD_BANDS[-1][1]
 
-    def apply_delta(self, delta: Dict[str, Any]):
-        self.joy += float(delta.get("joy", 0))
-        self.mood += float(delta.get("mood", 0))
-        self.energy += float(delta.get("energy", 0))
-        self.hunger += float(delta.get("hunger", 0))
-        self.clamp_all()
+    # -------------------------
+    # ✅ mood 갱신: fun/energy/hunger 영향 반영
+    # 호출 타이밍:
+    #  - 1초/2초 타이머 틱마다
+    #  - 행동(밥먹기/놀기/알바) 끝날 때
+    # -------------------------
+    def update_mood_from_needs(self, dt_sec: float = 1.0) -> None:
+        """
+        dt_sec: 시간 경과(초). 타이머틱이면 1.0 주면 됨.
+        """
 
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "pet_name": self.pet_name,
-            "hunger": self.hunger,
-            "energy": self.energy,
-            "mood": self.mood,
-            "joy": self.joy,
-            "last_face": self.last_face,
-            "money": self.money,
-            "owned_bg": {k: sorted(list(v)) for k, v in self.owned_bg.items()},
-            "selected_bg": dict(self.selected_bg),
-        }
+        # 1) 정규화(0~1)
+        fun_n = clamp(self.fun) / 100.0
+        # energy는 0~max_energy라서 max 기준 정규화
+        energy_n = clamp(self.energy, 0.0, self.max_energy) / float(self.max_energy)
+        hunger_n = clamp(self.hunger) / 100.0  # 너는 hunger가 높을수록 배고픈 값이라면 아래 반대로 바꿔야 함
+
+        # ⚠️ 만약 hunger가 "배고픔(높을수록 나쁨)"이면:
+        # hunger_good = 1.0 - hunger_n
+        # 지금 예시는 hunger가 "포만감(높을수록 좋음)"이라는 가정으로 감.
+        hunger_good = hunger_n
+
+        # 2) mood 목표치 계산 (0~100)
+        # 가중치는 취향대로 조절해도 됨
+        # - fun: 즉각 기분을 올려주는 힘
+        # - energy: 낮으면 짜증/우울 쪽으로 끌고감
+        # - hunger: 배고프면 기분 나빠지는 느낌(옵션)
+        base = 50.0
+        target = (
+            base
+            + (fun_n - 0.5) * 70.0          # fun 영향 (±35 정도)
+            + (energy_n - 0.5) * 50.0       # energy 영향 (±25 정도)
+            + (hunger_good - 0.5) * 30.0    # hunger 영향 (±15 정도)
+        )
+        target = clamp(target)
+
+        # 3) 스무딩: 현재 mood가 목표치를 천천히 따라감
+        # dt_sec 커질수록 더 빨리 따라가게(프레임 독립)
+        follow_speed_per_sec = 6.0  # 초당 최대 몇 포인트 따라갈지 느낌
+        max_step = follow_speed_per_sec * max(0.0, dt_sec)
+
+        diff = target - self.mood
+        step = clamp(diff, -max_step, max_step)
+
+        self.mood = clamp(self.mood + step)
+
+    # -------------------------
+    # ✅ "행동"이 mood에 직접 주는 영향도 같이 쓰고 싶으면
+    # -------------------------
+    def add_fun(self, amount: float) -> None:
+        self.fun = clamp(self.fun + amount)
+        # fun 변했으니 mood도 한번 반영
+        self.update_mood_from_needs(dt_sec=0.5)
+
+    def add_energy(self, amount: float) -> None:
+        self.energy = clamp(self.energy + amount, 0.0, self.max_energy)
+        self.update_mood_from_needs(dt_sec=0.5)
+    
+    def clamp_all(self) -> None:
+        # 기본 욕구/리소스 clamp
+        self.energy = clamp(self.energy, 0.0, self.max_energy)
+        self.hunger = clamp(self.hunger)   # 0~100
+        self.fun = clamp(self.fun)         # 0~100
+        self.mood = clamp(self.mood)       # 0~100
+
+        # stats/inventory 정리
+        if not isinstance(self.stats, dict):
+            self.stats = {"power": 0, "cute": 5, "fun": 0}
+        for k in ("power", "cute", "fun"):
+            self.stats[k] = int(self.stats.get(k, 0))
+
+        if not isinstance(self.inventory, dict):
+            self.inventory = {}
+        # 음수 수량 방지
+        for k in list(self.inventory.keys()):
+            self.inventory[k] = max(0, int(self.inventory[k]))
+            if self.inventory[k] == 0:
+                # 0이면 지우고 싶으면 이 줄 켜도 됨
+                # del self.inventory[k]
+                pass
 
 
 # =========================
@@ -480,7 +536,6 @@ class SimpleWindow(QWidget):
         layout.addWidget(self.label)
         self.setLayout(layout)
 
-
 class MoneyWindow(SimpleWindow):
     def __init__(self, state: PetState, icon: Optional[QIcon] = None):
         super().__init__("소지금", icon=icon)
@@ -491,51 +546,28 @@ class MoneyWindow(SimpleWindow):
         self.refresh()
 
     def refresh(self):
-        self.money_label.setText(f"현재 소지금: {self.state.money}원")
-
+        self.money_label.setText(f"현재 소지금: {int(self.state.money)}원")
 
 # =========================
 # Job Window (JSON 기반: 장소 선택/텍스트RPG/드랍/판매)
 # =========================
-
-# ✅ 파일 경로 (원하면 파일명 바꿔도 됨)
-JOBS_JSON_PATH = ASSET_DIR / "jobs.json"
-ITEMS_JSON_PATH = ASSET_DIR / "items.json"
-
-STAT_LABELS = {
-    "power": "힘",
-    "fun": "재미",
-    "stamina": "체력",
-    "cute": "귀여움",
-}
-
-PINK = "#ff4fa3"
-
-# =========================
-# Job Window (JSON 기반)
-# - asset/jobs.json : {"categories":{}, "places":[...]}
-# - asset/items.json: {"items":{...}}
-# =========================
-
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
-import json, random, os
-from PySide6.QtCore import Qt, QTimer, QSize
-from PySide6.QtGui import QPixmap, QIcon
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
-    QTextEdit, QPushButton, QMessageBox, QStackedWidget, QFrame, QSpinBox
-)
-
 # ✅ 파일 경로 (기본값)
 JOBS_JSON_PATH = ASSET_DIR / "jobs.json"
 ITEMS_JSON_PATH = ASSET_DIR / "items.json"
 
 # ✅ 스크립트 길이
-SCRIPT_LINES_DEFAULT = 10  # 보통 10줄
-SCRIPT_LINES_RANGE = (8, 12)  # 랜덤으로 하고 싶으면 이거 쓰면 됨
+SCRIPT_LINES_DEFAULT = 10
+SCRIPT_LINES_RANGE = (8, 12)
 
 PINK = "#ff4fa3"
+
+# ✅ 알바 “능력치” 라벨 (state.stats에 있는 것만)
+STAT_LABELS = {
+    "power": "힘",
+    "fun": "흥미도",
+    "cute": "귀여움",
+}
+# ✅ 기본 욕구/리소스(바)는 따로: energy / mood / fun(욕구) / hunger
 
 
 class JobWindow(QWidget):
@@ -545,8 +577,8 @@ class JobWindow(QWidget):
         icon: Optional[QIcon] = None,
         jobs_json_path: Path = JOBS_JSON_PATH,
         items_json_path: Path = ITEMS_JSON_PATH,
-        close_on_exhaust: bool = True,   # 체력 마이너스 시 창 닫아서 "메인 복귀" 느낌
-        script_random_lines: bool = True # 스크립트 8~12 랜덤 / False면 10 고정
+        close_on_exhaust: bool = True,
+        script_random_lines: bool = True
     ):
         super().__init__()
         self.state = state
@@ -584,9 +616,9 @@ class JobWindow(QWidget):
         # -------------------------
         self.stack = QStackedWidget()
 
-        # stats bar 관련
         self._stats_label_sets: List[Dict[str, QLabel]] = []
         self._money_labels: List[QLabel] = []
+        self._need_labels: List[Dict[str, QLabel]] = []  # energy/mood/fun/hunger
 
         # ===== page_select =====
         self.page_select = QWidget()
@@ -715,6 +747,22 @@ class JobWindow(QWidget):
         self.ui_timer.start(400)
 
     # -------------------------
+    # ✅ stamina → energy 매핑
+    # -------------------------
+    def _norm_key(self, k: str) -> str:
+        return "energy" if k == "stamina" else k
+
+    def _get_need_stats(self) -> Dict[str, int]:
+        # PetState의 float → 표시용 int
+        return {
+            "energy": int(getattr(self.state, "energy", 0)),
+            "max_energy": int(getattr(self.state, "max_energy", 0)),
+            "hunger": int(getattr(self.state, "hunger", 0)),
+            "fun_need": int(getattr(self.state, "fun", 0)),   # ✅ 욕구 fun
+            "mood": int(getattr(self.state, "mood", 0)),
+        }
+
+    # -------------------------
     # 내장 헬퍼들
     # -------------------------
     def _safe_read_json(self, path: Path) -> Optional[Any]:
@@ -764,21 +812,29 @@ class JobWindow(QWidget):
                 continue
             eff = self._item_effects(item_id)
             for stat, v in (eff or {}).items():
-                bonus[stat] = int(bonus.get(stat, 0)) + int(v) * count
+                stat = self._norm_key(stat)
+                if stat in bonus:
+                    bonus[stat] = int(bonus.get(stat, 0)) + int(v) * count
         return bonus
 
     def _merged_stats(self, base: Dict[str, int], bonus: Dict[str, int]) -> Dict[str, int]:
         out = dict(base or {})
         for k, v in (bonus or {}).items():
             out[k] = int(out.get(k, 0)) + int(v)
+        # ✅ 요구치가 stamina로 들어오면 energy로 체크해야 하니까 total에 energy도 넣어둠
+        out["energy"] = int(getattr(self.state, "energy", 0))
         return out
 
     def _meets_requirements(self, total_stats: Dict[str, int], req: Dict[str, int]) -> Tuple[bool, List[str]]:
         lacks: List[str] = []
         for stat, need in (req or {}).items():
+            stat = self._norm_key(stat)
             cur = int(total_stats.get(stat, 0))
             if cur < int(need):
-                lacks.append(f"{STAT_LABELS.get(stat, stat)} {need} 필요(현재 {cur})")
+                if stat == "energy":
+                    lacks.append(f"에너지 {need} 필요(현재 {cur})")
+                else:
+                    lacks.append(f"{STAT_LABELS.get(stat, stat)} {need} 필요(현재 {cur})")
         return (len(lacks) == 0), lacks
 
     def _resolve_drop_table(self, place: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -823,6 +879,16 @@ class JobWindow(QWidget):
         row.addWidget(money)
         self._money_labels.append(money)
 
+        # ✅ energy/mood/fun/hunger 표시
+        need_labels: Dict[str, QLabel] = {}
+        for key in ["energy", "mood", "fun_need", "hunger"]:
+            lb = QLabel()
+            lb.setMinimumWidth(110)
+            need_labels[key] = lb
+            row.addWidget(lb)
+        self._need_labels.append(need_labels)
+
+        # ✅ 알바 능력치(power/cute/fun bonus)
         labels: Dict[str, QLabel] = {}
         for k in STAT_LABELS.keys():
             lb = QLabel()
@@ -838,6 +904,13 @@ class JobWindow(QWidget):
     def _refresh_stats_ui(self):
         for ml in self._money_labels:
             ml.setText(f"💰 {int(getattr(self.state, 'money', 0))}원")
+
+        need = self._get_need_stats()
+        for d in self._need_labels:
+            d["energy"].setText(f"에너지: {need['energy']}/{need['max_energy']}")
+            d["mood"].setText(f"기분: {need['mood']}")
+            d["fun_need"].setText(f"재미: {need['fun_need']}")
+            d["hunger"].setText(f"허기: {need['hunger']}")
 
         base = getattr(self.state, "stats", {k: 0 for k in STAT_LABELS.keys()})
         inv = getattr(self.state, "inventory", {})
@@ -856,13 +929,11 @@ class JobWindow(QWidget):
     # data load + ui reload
     # -------------------------
     def _load_data(self):
-        # ✅ 파일 존재 여부를 힌트에 보여주기
         missing = []
         if not self.jobs_json_path.exists():
             missing.append(f"❌ JSON 없음: {self.jobs_json_path}")
         if not self.items_json_path.exists():
             missing.append(f"❌ JSON 없음: {self.items_json_path}")
-
         if missing:
             self.hint.setText("\n".join(missing))
 
@@ -900,7 +971,7 @@ class JobWindow(QWidget):
 
         base = self.state.stats
         bonus = self._calc_item_bonus(self.state.inventory)
-        total = self._merged_stats(base, bonus)
+        total = self._merged_stats(base, bonus)  # ✅ total["energy"] 포함됨
 
         for p in self.places:
             name = p.get("name", "이름없음")
@@ -913,7 +984,6 @@ class JobWindow(QWidget):
             # 썸네일
             thumb_path = p.get("thumb")
             if thumb_path:
-                # jobs.json에 "asset/jobs/cafe.png" 처럼 들어오면 BASE_DIR 기준 상대경로
                 abs_path = (BASE_DIR / str(thumb_path)).resolve() if not os.path.isabs(str(thumb_path)) else Path(str(thumb_path))
                 pm = QPixmap(str(abs_path))
                 if not pm.isNull():
@@ -926,7 +996,15 @@ class JobWindow(QWidget):
             else:
                 money_txt = f"{money_rng}원"
 
-            req_txt = ", ".join([f"{STAT_LABELS.get(k,k)} {v}" for k, v in req.items()]) or "없음"
+            # ✅ tooltip 요구치도 stamina면 energy로 표기
+            pretty_req = []
+            for k, v in req.items():
+                k2 = self._norm_key(k)
+                if k2 == "energy":
+                    pretty_req.append(f"에너지 {v}")
+                else:
+                    pretty_req.append(f"{STAT_LABELS.get(k2,k2)} {v}")
+            req_txt = ", ".join(pretty_req) or "없음"
 
             drop_table = self._resolve_drop_table(p)
             preview = []
@@ -1033,23 +1111,22 @@ class JobWindow(QWidget):
         self._reload_places()
 
     def _apply_rewards(self, place: Dict[str, Any]):
-        # -------------------------
-        # ✅ 체력(stamina) 마이너스면: 알림 + 중단 + 목록 복귀
-        # (보상/드랍 주기 전에 먼저 검사!)
-        # -------------------------
-        delta = place.get("delta", {}) or {}
-        cur_stam = int(self.state.stats.get("stamina", 0))
-        stam_cost = int(delta.get("stamina", 0))  # -6 같은 값
-        after_stam = cur_stam + stam_cost
+        delta = dict(place.get("delta", {}) or {})
 
-        if after_stam < 0:
-            QMessageBox.warning(
-                self,
-                "탈진!",
-                "체력이 바닥나서 쓰러졌어…\n알바를 중단하고 돌아갈게!"
-            )
-            self.state.stats["stamina"] = 0
-            self.result.setText("체력 부족으로 알바 실패… (보상 없음)")
+        # ✅ stamina가 있으면 energy로 합치기
+        if "stamina" in delta and "energy" not in delta:
+            delta["energy"] = delta["stamina"]
+
+        energy_cost = float(delta.get("energy", 0))  # 보통 -6 같은 값
+        after_energy = float(getattr(self.state, "energy", 0.0)) + energy_cost
+
+        # -------------------------
+        # ✅ 탈진 체크: energy 기준
+        # -------------------------
+        if after_energy < 0:
+            QMessageBox.warning(self, "탈진!", "에너지가 바닥나서 쓰러졌어…\n알바를 중단하고 돌아갈게!")
+            self.state.energy = 0.0
+            self.result.setText("에너지 부족으로 알바 실패… (보상 없음)")
             self._stop_and_back()
             if self.close_on_exhaust:
                 self.close()
@@ -1073,9 +1150,23 @@ class JobWindow(QWidget):
             if fx:
                 self.log.append(f"{fx}  {self._item_name(item_id)} x{qty}")
 
-        # delta 반영
-        for stat, v in delta.items():
-            self.state.stats[stat] = int(self.state.stats.get(stat, 0)) + int(v)
+        # ✅ delta 적용:
+        # - energy/mood/fun/hunger는 PetState 본체에
+        # - power/cute/fun(알바능력)은 state.stats에
+        for k, v in delta.items():
+            k2 = self._norm_key(k)
+            if k2 == "energy":
+                self.state.energy = max(0.0, float(self.state.energy) + float(v))
+                self.state.energy = min(float(self.state.max_energy), float(self.state.energy))
+            elif k2 == "mood":
+                self.state.mood = max(0.0, min(100.0, float(self.state.mood) + float(v)))
+            elif k2 == "hunger":
+                self.state.hunger = max(0.0, min(100.0, float(self.state.hunger) + float(v)))
+            elif k2 == "fun":
+                # ⚠️ jobs.json delta.fun은 “욕구 재미”로 처리 (원하면 stats쪽으로 바꿔줄 수 있음)
+                self.state.fun = max(0.0, min(100.0, float(self.state.fun) + float(v)))
+            elif k2 in self.state.stats:
+                self.state.stats[k2] = int(self.state.stats.get(k2, 0)) + int(v)
 
         # 결과 표시
         if got_items:
@@ -1197,6 +1288,9 @@ class JobWindow(QWidget):
         self._reload_places()
         self.sell_preview.setText("총 판매 예상액: 0원")
 
+# =========================
+# Name Window
+# =========================
 class NameWindow(QWidget):
     def __init__(self, state: PetState, icon: Optional[QIcon] = None):
         super().__init__()
@@ -1231,20 +1325,14 @@ class NameWindow(QWidget):
         self.setLayout(layout)
 
     def save(self):
-        name = self.edit.text().strip()
-        if not name:
-            name = "라이미"
+        name = self.edit.text().strip() or "라이미"
         self.state.pet_name = name[:12]
         self.close()
 
-
 # =========================
-# ✅ Thumbnail row widget (Placement/Shop)
+# ✅ Thumbnail row widget
 # =========================
 class ThumbRow(QWidget):
-    """
-    큰 버튼 + 썸네일 + 긴 이름 표시
-    """
     def __init__(
         self,
         title: str,
@@ -1333,9 +1421,8 @@ class ThumbRow(QWidget):
         main.setContentsMargins(0, 0, 0, 0)
         main.addWidget(wrap)
 
-
 # =========================
-# Placement Panel (House)  ✅ bigger + thumbnail
+# Placement Panel
 # =========================
 class PlacementPanel(QWidget):
     def __init__(self, state: PetState, on_changed=None, parent=None):
@@ -1346,10 +1433,6 @@ class PlacementPanel(QWidget):
         self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setFixedSize(PLACEMENT_PANEL_W, PLACEMENT_PANEL_H)
-
-        self.setStyleSheet("""
-            QLabel { font-weight: 900; }
-        """)
 
         wrap = QWidget(self)
         wrap.setObjectName("Wrap")
@@ -1362,7 +1445,7 @@ class PlacementPanel(QWidget):
         """)
 
         title = QLabel("🏠 배치 변경", wrap)
-        title.setStyleSheet("font-size: 16px;")
+        title.setStyleSheet("font-size: 16px; font-weight: 900;")
 
         self.cat_buttons: Dict[str, QPushButton] = {}
         self.list_area = QListWidget(wrap)
@@ -1391,16 +1474,6 @@ class PlacementPanel(QWidget):
             b.setMinimumHeight(CAT_BTN_H)
             b.setMinimumWidth(CAT_BTN_MIN_W)
             b.setCursor(Qt.PointingHandCursor)
-            b.setStyleSheet("""
-                QPushButton {
-                    padding: 6px 8px;
-                    border-radius: 12px;
-                    border: 1px solid rgba(0,0,0,40);
-                    background: rgba(255,255,255,245);
-                    font-weight: 900;
-                }
-                QPushButton:hover { background: rgba(255,255,255,255); }
-            """)
             b.clicked.connect(lambda _=False, c=cat: self.open_category(c))
             self.cat_buttons[cat] = b
             row.addWidget(b)
@@ -1425,11 +1498,9 @@ class PlacementPanel(QWidget):
             self.on_changed()
 
     def open_category_refresh(self):
-        # ✅ furniture.json 변경/추가 대응: owned는 유지, 리스트는 최신 카탈로그로 렌더
         self.open_category(self.current_cat)
 
     def _selected_style(self, cat: str, btn: QPushButton):
-        # 현재 카테고리 강조
         if self.current_cat == cat:
             btn.setStyleSheet("""
                 QPushButton {
@@ -1439,7 +1510,6 @@ class PlacementPanel(QWidget):
                     background: rgba(220,240,255,245);
                     font-weight: 900;
                 }
-                QPushButton:hover { background: rgba(230,245,255,255); }
             """)
         else:
             btn.setStyleSheet("""
@@ -1450,7 +1520,6 @@ class PlacementPanel(QWidget):
                     background: rgba(255,255,255,245);
                     font-weight: 900;
                 }
-                QPushButton:hover { background: rgba(255,255,255,255); }
             """)
 
     def open_category(self, cat: str):
@@ -1460,21 +1529,16 @@ class PlacementPanel(QWidget):
 
         self.list_area.clear()
 
-        # ✅ 선택 해제/기본
         if cat == "wallpaper":
             self._add_choice(cat, None, title="기본(default)", subtitle="아무 벽지도 선택하지 않음", file_rel="", price=0)
         else:
             self._add_choice(cat, None, title="없음(해제)", subtitle="이 카테고리 가구 숨기기", file_rel="", price=0)
 
-        # ✅ owned 기준으로만 보여줌(구매한 것만 배치 가능)
         catalog = get_catalog()
         owned = self.state.owned_bg.get(cat, set())
 
-        # 카탈로그에 없는 owned가 있을 수도 있으니, 그건 id만으로라도 보여줌
         cat_items = {it["id"]: it for it in catalog.get(cat, [])}
-        owned_sorted = sorted(list(owned))
-
-        for iid in owned_sorted:
+        for iid in sorted(list(owned)):
             it = cat_items.get(iid, {"id": iid, "name": iid, "price": 0, "file": f"{cat}/{iid}.png"})
             self._add_choice(
                 cat,
@@ -1492,14 +1556,11 @@ class PlacementPanel(QWidget):
         if not p.exists():
             return None
         pm = QPixmap(str(p))
-        if pm.isNull():
-            return None
-        return pm
+        return None if pm.isNull() else pm
 
     def _add_choice(self, cat: str, item_id: Optional[str], title: str, subtitle: str, file_rel: str, price: int):
         cur = self.state.selected_bg.get(cat)
         selected = (cur == item_id)
-
         thumb_pm = self._load_thumb(file_rel)
         price_text = "" if price <= 0 else f"{price}원"
 
@@ -1525,9 +1586,8 @@ class PlacementPanel(QWidget):
         self.list_area.addItem(it)
         self.list_area.setItemWidget(it, w)
 
-
 # =========================
-# Shop Window (Furniture) ✅ json 기반 + thumbnail
+# Shop Window (Furniture)
 # =========================
 class ShopWindow(SimpleWindow):
     def __init__(self, state: PetState, icon: Optional[QIcon] = None, on_changed=None):
@@ -1535,7 +1595,8 @@ class ShopWindow(SimpleWindow):
         self.state = state
         self.on_changed = on_changed
 
-        btn = QPushButton("간식 사기 (-300원, 허기 +10, 즐거움 +3)")
+        # 간식 버튼 (펫 상태에 영향)
+        btn = QPushButton("간식 사기 (-300원, 배고픔 +10, 재미 +3, 기분 +1)")
         btn.clicked.connect(self.buy_snack)
         self.layout().addWidget(btn)
 
@@ -1543,7 +1604,6 @@ class ShopWindow(SimpleWindow):
         furn_title.setObjectName("TitleLabel")
         self.layout().addWidget(furn_title)
 
-        # ✅ 리스트 UI로 교체(큰 버튼 + 썸네일)
         self.cat_row = QHBoxLayout()
         self.cat_btns: Dict[str, QPushButton] = {}
         for cat in BG_CATEGORIES:
@@ -1588,9 +1648,7 @@ class ShopWindow(SimpleWindow):
         if not p.exists():
             return None
         pm = QPixmap(str(p))
-        if pm.isNull():
-            return None
-        return pm
+        return None if pm.isNull() else pm
 
     def _highlight_cat(self):
         for c, b in self.cat_btns.items():
@@ -1626,12 +1684,10 @@ class ShopWindow(SimpleWindow):
         catalog = get_catalog()
         items = catalog.get(self.current_cat, [])
         owned = self.state.owned_bg.get(self.current_cat, set())
-
         sellable = [it for it in items if it.get("id") not in owned]
 
         if not sellable:
-            it = QListWidgetItem("구매할 가구가 없어!")
-            self.shop_list.addItem(it)
+            self.shop_list.addItem(QListWidgetItem("구매할 가구가 없어!"))
             return
 
         for it in sellable:
@@ -1670,17 +1726,14 @@ class ShopWindow(SimpleWindow):
             self.result.setText("돈이 부족해…")
             return
         self.state.money -= 300
-        self.state.hunger = clamp(self.state.hunger + 10)
-        self.state.joy = clamp(self.state.joy + 3)
-        self.result.setText("간식 샀다! (허기+10, 즐거움+3)")
+        self.state.apply_delta({"hunger": +10, "fun": +3, "mood": +1, "energy": +1})
+        self.result.setText("간식 샀다! (배고픔+10, 재미+3, 기분+1)")
         self._changed()
 
     def buy_bg_item(self, cat: str, iid: str, name: str, price: int, file_rel: str):
         if price > 0 and self.state.money < price:
             self.result.setText("돈이 부족해…")
             return
-
-        # 파일 존재 체크(실수 방지)
         if file_rel:
             p = resolve_bg_path(file_rel)
             if not p.exists():
@@ -1690,14 +1743,12 @@ class ShopWindow(SimpleWindow):
         self.state.money -= max(0, int(price))
         self.state.owned_bg[cat].add(iid)
 
-        # ✅ 첫 구매면 자동 선택(편의)
         if self.state.selected_bg.get(cat) is None:
             self.state.selected_bg[cat] = iid
 
         self.result.setText(f"{cat}: {name} 구매 완료!")
         self.refresh_items()
         self._changed()
-
 
 # =========================
 # Pet Window (Desktop)
@@ -1706,7 +1757,6 @@ class PetWindow(QWidget):
     def __init__(self, state: PetState, app_icon: Optional[QIcon] = None):
         self.press_pos = None
         self.was_dragged = False
-
         super().__init__()
         self.state = state
 
@@ -1736,13 +1786,13 @@ class PetWindow(QWidget):
             t.scale(-1, 1)
             self.walk_frames_flipped = [fr.transformed(t, Qt.SmoothTransformation) for fr in self.walk_frames]
 
-        self.bubble = QPixmap(str(BUBBLE_PATH))
-        if self.bubble.isNull():
+        bubble = QPixmap(str(BUBBLE_PATH))
+        if bubble.isNull():
             self.bubble = None
         else:
-            self.bubble = self.bubble.scaled(
-                int(self.bubble.width() * SCALE_BUBBLE),
-                int(self.bubble.height() * SCALE_BUBBLE),
+            self.bubble = bubble.scaled(
+                int(bubble.width() * SCALE_BUBBLE),
+                int(bubble.height() * SCALE_BUBBLE),
                 Qt.KeepAspectRatio,
                 Qt.SmoothTransformation,
             )
@@ -1832,7 +1882,6 @@ class PetWindow(QWidget):
             mode = "normal"
         self.mode = mode
         self.frame_i = 0
-
         if mode in ANIM_SPEED_MS:
             self.anim_timer.start(ANIM_SPEED_MS[mode])
         else:
@@ -1898,7 +1947,7 @@ class PetWindow(QWidget):
         self.start_shake(sec=0.35, strength=2)
         msg = random.choice(["헤헤…", "찍찍… 좋아!", "쓰담쓰담…", "기분 좋아…"])
         self.say(msg, 2.0)
-        self.state.apply_delta({"joy": +6, "mood": +3, "energy": 0, "hunger": -0.5})
+        self.state.apply_delta({"fun": +3, "mood": +6, "energy": 0, "hunger": -0.5})
 
     def keyPressEvent(self, e):
         if e.key() == Qt.Key_Escape:
@@ -1922,12 +1971,12 @@ class PetWindow(QWidget):
             self.sleeping = False
             self.state.energy = max(self.state.energy, SLEEP_RECOVER_ENERGY)
             self.state.mood = clamp(self.state.mood + 4)
-            self.state.joy = clamp(self.state.joy + 2)
+            self.state.fun = clamp(self.state.fun + 2)
             self.say("찍! 좀 나아졌어…", duration=2.2)
             self.set_mode("normal", sec=99999)
 
         if self.mode == "normal" and now > self.face_until and now >= self.next_normal_change:
-            low = (self.state.mood <= 35) or (self.state.joy <= 20) or (self.state.energy <= 20) or (self.state.hunger <= 18)
+            low = (self.state.mood <= 35) or (self.state.fun <= 20) or (self.state.energy <= 20) or (self.state.hunger <= 18)
             pool = self.sad_faces if (low and self.sad_faces) else (self.normal_faces or list(self.emotion_map.keys()))
             self.current_face = random.choice(pool)
             self.state.last_face = self.current_face
@@ -2017,9 +2066,8 @@ class PetWindow(QWidget):
             painter.setPen(Qt.black)
             painter.drawText(text_rect, Qt.AlignCenter | Qt.TextWordWrap, self.say_text)
 
-
 # =========================
-# House Pet Widget (Inside House)
+# HousePetWidget (Inside House)
 # =========================
 class HousePetWidget(QWidget):
     def __init__(self, state: PetState, parent=None):
@@ -2193,7 +2241,7 @@ class HousePetWidget(QWidget):
             self.sleeping = False
             self.state.energy = max(self.state.energy, SLEEP_RECOVER_ENERGY)
             self.state.mood = clamp(self.state.mood + 4)
-            self.state.joy = clamp(self.state.joy + 2)
+            self.state.fun = clamp(self.state.fun + 2)
             self.say("찍! 개운해…", duration=2.0)
             self.set_mode("normal", sec=99999)
 
@@ -2286,9 +2334,8 @@ class HousePetWidget(QWidget):
         finally:
             painter.end()
 
-
 # =========================
-# House Window (Layered Background) ✅ json 기반 로딩
+# House Window
 # =========================
 class HouseWindow(QWidget):
     def __init__(self, state: PetState, desktop_pet: "PetWindow", icon: Optional[QIcon] = None):
@@ -2307,11 +2354,9 @@ class HouseWindow(QWidget):
         if not self.default_bg.isNull():
             self.default_bg = self.default_bg.scaled(self.size(), Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
 
-        # ✅ 카탈로그 기반 pixmap 캐시: cat -> id -> pixmap(창 크기로 스케일된)
         self.bg_pix: Dict[str, Dict[str, QPixmap]] = {cat: {} for cat in BG_CATEGORIES}
         self.reload_bg_pixmaps()
 
-        # ✅ 배치 버튼(우측 상단, 반투명)
         self.placement_btn = QPushButton("배치", self)
         self.placement_btn.setCursor(Qt.PointingHandCursor)
         self.placement_btn.setStyleSheet("""
@@ -2331,17 +2376,13 @@ class HouseWindow(QWidget):
 
         self.placement_panel: Optional[PlacementPanel] = None
 
-        # ✅ 집 안 펫
         self.house_pet = HousePetWidget(self.state, parent=self)
         self.house_pet.raise_()
 
-        # ✅ 집 들어가면 바탕화면 펫 숨기기
         self.desktop_pet.hide()
 
     def reload_bg_pixmaps(self):
-        # ✅ 최신 json 반영
         catalog = get_catalog()
-
         for cat in BG_CATEGORIES:
             self.bg_pix[cat].clear()
             for it in catalog.get(cat, []):
@@ -2361,7 +2402,6 @@ class HouseWindow(QWidget):
     def resizeEvent(self, e):
         super().resizeEvent(e)
         self._reposition_overlay_ui()
-        # 창 크기 바뀌면 다시 스케일
         if not self.default_bg.isNull():
             self.default_bg = QPixmap(str(BG_DEFAULT_PATH)).scaled(self.size(), Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
         self.reload_bg_pixmaps()
@@ -2377,9 +2417,7 @@ class HouseWindow(QWidget):
             self.placement_panel.activateWindow()
             return
 
-        # ✅ 혹시 json이 바뀌었을 수도 있으니, 배치 열 때도 최신 적용
         self.reload_bg_pixmaps()
-
         self.placement_panel = PlacementPanel(self.state, on_changed=self._on_layer_changed, parent=self)
         x = self.width() - self.placement_panel.width() - 10
         y = self.placement_btn.y() + self.placement_btn.height() + 8
@@ -2401,7 +2439,6 @@ class HouseWindow(QWidget):
     def paintEvent(self, e):
         painter = QPainter(self)
 
-        # ✅ 베이스: wallpaper가 선택되면 그것, 아니면 default
         wp_id = self.state.selected_bg.get("wallpaper")
         if wp_id and wp_id in self.bg_pix["wallpaper"]:
             painter.drawPixmap(0, 0, self.bg_pix["wallpaper"][wp_id])
@@ -2411,12 +2448,10 @@ class HouseWindow(QWidget):
             else:
                 painter.fillRect(self.rect(), Qt.white)
 
-        # ✅ 위 레이어들
         for cat in ["wheel", "house", "deco", "flower"]:
             sel = self.state.selected_bg.get(cat)
             if sel and sel in self.bg_pix[cat]:
                 painter.drawPixmap(0, 0, self.bg_pix[cat][sel])
-
 
 # =========================
 # Apply AI result
@@ -2427,7 +2462,7 @@ def apply_ai_result(state: PetState, pet_obj, result: Dict[str, Any]):
     face = result.get("face")
     if face:
         try:
-            is_low = (state.mood <= 35) or (state.joy <= 20) or (state.energy <= 20) or (state.hunger <= 18)
+            is_low = (state.mood <= 35) or (state.fun <= 20) or (state.energy <= 20) or (state.hunger <= 18)
             sad_faces = getattr(pet_obj, "sad_faces", [])
             normal_faces = getattr(pet_obj, "normal_faces", None)
             if (not is_low) and (face in sad_faces) and normal_faces:
@@ -2451,7 +2486,6 @@ def apply_ai_result(state: PetState, pet_obj, result: Dict[str, Any]):
             pet_obj.do_jump(int(cmd.get("strength", 12)))
         elif ctype == "SET_MODE" and hasattr(pet_obj, "set_mode"):
             pet_obj.set_mode(str(cmd.get("mode", "normal")), sec=float(cmd.get("sec", 1.5)))
-
 
 # =========================
 # Control Panel
@@ -2492,9 +2526,14 @@ class ControlPanel(QWidget):
         input_row.addWidget(self.input, 1)
         input_row.addWidget(send_btn, 0)
 
-        self.joy_bar = QProgressBar()
-        self.joy_bar.setRange(0, 100)
-        self.joy_bar.setFormat("즐거움 %p%")
+        # ✅ 펫 상태 bar: fun / mood 분리
+        self.fun_bar = QProgressBar()
+        self.fun_bar.setRange(0, 100)
+        self.fun_bar.setFormat("재미 %p%")
+
+        self.mood_bar = QProgressBar()
+        self.mood_bar.setRange(0, 100)
+        self.mood_bar.setFormat("기분 %p%")
 
         self.hunger_bar = QProgressBar()
         self.hunger_bar.setRange(0, 100)
@@ -2503,10 +2542,6 @@ class ControlPanel(QWidget):
         self.energy_bar = QProgressBar()
         self.energy_bar.setRange(0, 100)
         self.energy_bar.setFormat("에너지 %p%")
-
-        self.mood_bar = QProgressBar()
-        self.mood_bar.setRange(0, 100)
-        self.mood_bar.setFormat("기분 %p%")
 
         feed_btn = QPushButton("🍚 밥주기")
         pet_btn = QPushButton("🤍 쓰다듬기")
@@ -2550,10 +2585,10 @@ class ControlPanel(QWidget):
 
         layout = QVBoxLayout()
         layout.addWidget(self.log)
-        layout.addWidget(self.joy_bar)
+        layout.addWidget(self.fun_bar)
+        layout.addWidget(self.mood_bar)
         layout.addWidget(self.hunger_bar)
         layout.addWidget(self.energy_bar)
-        layout.addWidget(self.mood_bar)
         layout.addLayout(btn_row)
         layout.addLayout(sub_row)
         layout.addLayout(input_row)
@@ -2624,24 +2659,34 @@ class ControlPanel(QWidget):
 
     def refresh(self):
         self.state.clamp_all()
-        self.joy_bar.setValue(int(self.state.joy))
-        self.hunger_bar.setValue(int(self.state.hunger))
-        self.energy_bar.setValue(int(self.state.energy))
+        self.fun_bar.setValue(int(self.state.fun))
         self.mood_bar.setValue(int(self.state.mood))
+        self.hunger_bar.setValue(int(self.state.hunger))
+
+        # energy는 max_energy 기준으로 0~100으로 보이게
+        ratio = (self.state.energy / max(1.0, self.state.max_energy)) * 100.0
+        self.energy_bar.setValue(int(clamp(ratio, 0, 100)))
 
     def state_tick_1s(self):
         active_pet = self.get_active_pet()
 
+        # 자연 감소
         self.state.hunger -= 1.0 * DECAY_MULT
         self.state.energy -= 0.6 * DECAY_MULT
 
+        # 배고프거나 에너지 낮으면 mood 떨어짐
         if self.state.hunger < 25:
             self.state.mood -= 1.0 * DECAY_MULT
         if self.state.energy < 20:
             self.state.mood -= 1.0 * DECAY_MULT
 
+        # 재미는 시간이 지나면 아주 조금 감소(심심함)
+        self.state.fun -= 0.3 * DECAY_MULT
+
+        # 회복
         if getattr(active_pet, "sleeping", False):
             self.state.energy += 1.2
+            self.state.mood += 0.2
         elif getattr(active_pet, "mode", "normal") == "normal":
             self.state.energy += 0.2
 
@@ -2670,8 +2715,15 @@ class ControlPanel(QWidget):
             self.last_needy_talk_at = now
             return
 
-        if self.state.joy <= BORED_WARN_JOY:
+        if self.state.fun <= BORED_WARN_FUN:
             msg = random.choice(["심심해…", "놀아줘…", "찍… 뭐해?"])
+            active_pet.say(msg, duration=2.2)
+            self.add_log(who, msg)
+            self.last_needy_talk_at = now
+            return
+
+        if self.state.mood <= 25:
+            msg = random.choice(["기분이 좀…", "찍… 우울해…", "안아줘…"])
             active_pet.say(msg, duration=2.2)
             self.add_log(who, msg)
             self.last_needy_talk_at = now
@@ -2728,7 +2780,7 @@ class ControlPanel(QWidget):
             payload = {
                 "event": {"type": "CHAT", "text": text, "source": "chat"},
                 "state": self.state.to_dict(),
-                "available_faces": active_pet.get_available_faces() if hasattr(active_pet, "get_available_faces") else self.pet.get_available_faces(),
+                "available_faces": active_pet.get_available_faces(),
             }
             result = call_groq_chat(payload, timeout_sec=30.0)
             apply_ai_result(self.state, active_pet, result)
@@ -2755,7 +2807,7 @@ class ControlPanel(QWidget):
             active_pet.trigger_eat_visual()
         self.add_log("나", "🍚 밥줬다")
 
-        self.state.apply_delta({"hunger": +22, "joy": +3, "mood": +2, "energy": +1})
+        self.state.apply_delta({"hunger": +22, "fun": +1, "mood": +2, "energy": +1})
         msg = random.choice(["냠냠! 맛있다!", "찍! 밥이다!", "너무 맛있어…"])
         active_pet.say(msg, 2.2)
         self.add_log(who, msg)
@@ -2772,7 +2824,7 @@ class ControlPanel(QWidget):
             return
 
         self.add_log("나", "🤍 쓰다듬었다")
-        self.state.apply_delta({"joy": +8, "mood": +4, "energy": 0, "hunger": -1})
+        self.state.apply_delta({"fun": +1, "mood": +8, "energy": 0, "hunger": -1})
 
         if hasattr(active_pet, "start_shake"):
             active_pet.start_shake(sec=0.35, strength=2)
@@ -2792,7 +2844,7 @@ class ControlPanel(QWidget):
             return
 
         self.add_log("나", "🎾 놀아줬다")
-        self.state.apply_delta({"joy": +10, "mood": +3, "energy": -3, "hunger": -2})
+        self.state.apply_delta({"fun": +10, "mood": +3, "energy": -3, "hunger": -2})
 
         if hasattr(active_pet, "do_jump"):
             active_pet.do_jump(13)
@@ -2803,7 +2855,6 @@ class ControlPanel(QWidget):
         active_pet.say(msg, 2.2)
         self.add_log(who, msg)
         self.refresh()
-
 
 # =========================
 # Main
@@ -2829,7 +2880,6 @@ if __name__ == "__main__":
 
     load_qss(app)
 
-    # ✅ json이 없어도 실행은 되게(폴백). 다만 안내는 찍어줌
     if not FURNITURE_JSON_PATH.exists():
         print("⚠️ furniture.json이 없어! 폴더 스캔 폴백으로 실행 중:", FURNITURE_JSON_PATH)
 
