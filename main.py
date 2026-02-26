@@ -9,7 +9,7 @@ import random
 import urllib.request
 import urllib.error
 from pathlib import Path
-from typing import Any, Dict, Any, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 # =========================
 # PySide6
@@ -517,7 +517,69 @@ class PetState:
                 # 0이면 지우고 싶으면 이 줄 켜도 됨
                 # del self.inventory[k]
                 pass
+    def apply_delta(self, delta: Dict[str, Any]) -> None:
+            """
+            공통 델타 적용 함수.
+            - control panel / shop / ai 결과 등에서 공통으로 사용
+            - stamina 키가 오면 energy로 매핑
+            """
+            if not isinstance(delta, dict):
+                return
 
+            # stamina -> energy 호환
+            if "stamina" in delta and "energy" not in delta:
+                delta["energy"] = delta.get("stamina")
+
+            # max_energy 먼저 적용(에너지 상한 바뀌면 현재 에너지도 안전하게)
+            if "max_energy" in delta:
+                try:
+                    self.max_energy = float(self.max_energy) + float(delta.get("max_energy") or 0)
+                except Exception:
+                    pass
+                # 최소 상한 보장(너무 작아지면 UI/로직 깨짐 방지)
+                self.max_energy = max(1.0, float(self.max_energy))
+
+            # 기본 욕구/상태 변화
+            for k, v in delta.items():
+                if k in ("stamina",):  # 위에서 energy로 이미 흡수
+                    continue
+
+                try:
+                    fv = float(v)
+                except Exception:
+                    continue
+
+                if k == "energy":
+                    self.energy = float(self.energy) + fv
+                elif k == "hunger":
+                    self.hunger = float(self.hunger) + fv
+                elif k == "fun":
+                    self.fun = float(self.fun) + fv
+                elif k == "mood":
+                    self.mood = float(self.mood) + fv
+                else:
+                    # 알바 스탯(power/cute/fun 보너스 등) 처리하고 싶으면 여기서
+                    # 예: delta에 {"power": +1} 같은게 들어오는 경우
+                    if isinstance(getattr(self, "stats", None), dict) and k in self.stats:
+                        self.stats[k] = int(self.stats.get(k, 0)) + int(fv)
+
+            # 범위 정리
+            self.clamp_all()
+
+            def to_dict(self) -> Dict[str, Any]:
+                """
+                AI payload/state 저장용. (call_groq_chat에서 씀)
+                """
+                return {
+                    "pet_name": self.pet_name,
+                    "hunger": float(self.hunger),
+                    "energy": float(self.energy),
+                    "max_energy": float(self.max_energy),
+                    "mood": float(self.mood),
+                    "fun": float(self.fun),
+                    "last_face": self.last_face,
+                    "money": int(self.money),
+                }
 
 # =========================
 # Sub Windows
