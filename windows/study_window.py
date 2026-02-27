@@ -1,5 +1,5 @@
 """
-windows/study_window.py - 공부 창 (간식 주기 포함)
+windows/study_window.py - 공부 창 (간식 + 소모품 상점)
 """
 from typing import Optional
 
@@ -10,12 +10,15 @@ from PySide6.QtWidgets import (
 )
 
 from state import PetState, clamp
+from windows.shop_window import ShopWindow
 
 
 class StudyWindow(QWidget):
-    def __init__(self, state: PetState, app_icon: Optional[QIcon] = None):
+    def __init__(self, state: PetState, shop_win: ShopWindow, app_icon: Optional[QIcon] = None):
         super().__init__()
         self.state = state
+        self.shop_win = shop_win
+
         self.setWindowTitle("공부")
         self.setWindowFlags(Qt.WindowStaysOnTopHint)
         if app_icon:
@@ -39,6 +42,11 @@ class StudyWindow(QWidget):
         self.snack_btn.clicked.connect(self.give_snack)
         layout.addWidget(self.snack_btn)
 
+        self.shop_btn = QPushButton("소모품 상점 열기")
+        self.shop_btn.setObjectName("MenuButton")
+        self.shop_btn.clicked.connect(self.open_consumable_shop)
+        layout.addWidget(self.shop_btn)
+
         self.result = QLabel("")
         self.result.setObjectName("HintLabel")
         layout.addWidget(self.result)
@@ -56,7 +64,7 @@ class StudyWindow(QWidget):
         if self.state.energy < 6:
             self.result.setText("에너지가 부족해서 공부를 못 하겠어…")
             return
-        self.state.energy = clamp(self.state.energy - 6)
+        self.state.energy = clamp(self.state.energy - 6, 0.0, self.state.max_energy)
         self.state.mood = clamp(self.state.mood + 1)
         self.state.fun = clamp(self.state.fun + 1)
         self.state.stats["interest"] = int(self.state.stats.get("interest", 0)) + 1
@@ -72,6 +80,12 @@ class StudyWindow(QWidget):
         self.state.hunger = clamp(self.state.hunger + 10)
         self.state.fun = clamp(self.state.fun + 3)
         self.state.mood = clamp(self.state.mood + 1)
-        self.state.energy = clamp(self.state.energy + 1)
+        self.state.energy = clamp(self.state.energy + 1, 0.0, self.state.max_energy)
         self.result.setText("냠냠! 간식 맛있다 😋")
         self._sync_money()
+
+    def open_consumable_shop(self):
+        # shop은 열릴 때마다 자동 refresh(showEvent에서 처리)
+        self.shop_win.show()
+        self.shop_win.raise_()
+        self.shop_win.activateWindow()

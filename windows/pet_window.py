@@ -1,12 +1,14 @@
 """
 windows/pet_window.py - 데스크탑 위에 떠다니는 펫 창
+- 드래그 시 asset/animation/draging 프레임 애니메이션
+- ControlPanel 채팅 연동: send_chat_from_panel 구현(로그에 답변 + 말풍선)
 """
 import random
 import time
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from PySide6.QtCore import Qt, QPoint, QRect, QTimer
-from PySide6.QtGui import QFont, QIcon, QPainter, QPixmap, QTransform
+from PySide6.QtGui import QFont, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QWidget
 
 from config import (
@@ -17,20 +19,28 @@ from config import (
 )
 from state import PetState, clamp
 from utils.image_loader import load_folder_pixmaps_as_map, load_folder_pixmaps_as_list, make_flipped_frames
+from body import apply_ai_result
+
+try:
+    from groq_api import call_groq_chat
+except Exception:
+    call_groq_chat = None
 
 
 class PetWindow(QWidget):
     def __init__(self, state: PetState, app_icon: Optional[QIcon] = None):
-        self.press_pos = None
-        self.was_dragged = False
         super().__init__()
         self.state = state
+
+        self.press_pos: Optional[QPoint] = None
+        self.was_dragged = False
 
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         if app_icon:
             self.setWindowIcon(app_icon)
 
+        # --- faces ---
         self.emotion_map = load_folder_pixmaps_as_map(ANIM_DIR / "emotion", SCALE_CHAR)
         if not self.emotion_map:
             raise FileNotFoundError("asset/animation/emotion 폴더에 png가 없어!")
@@ -41,12 +51,19 @@ class PetWindow(QWidget):
         self.sad_faces = sorted(list({*auto_sad, *[k for k in manual_sad if k in keys]}))
         self.normal_faces = [k for k in keys if k not in self.sad_faces]
 
+        # --- animations ---
         self.walk_frames = load_folder_pixmaps_as_list(ANIM_DIR / "walk", SCALE_CHAR)
         self.sleep_frames = load_folder_pixmaps_as_list(ANIM_DIR / "sleep", SCALE_CHAR)
         self.speak_frames = load_folder_pixmaps_as_list(ANIM_DIR / "speak", SCALE_CHAR)
         self.eat_frames = load_folder_pixmaps_as_list(ANIM_DIR / "eat", SCALE_CHAR)
+
+        # ✅ drag animation frames
+        self.drag_frames = load_folder_pixmaps_as_list(ANIM_DIR / "draging", SCALE_CHAR)
+        self.drag_frames_flipped = make_flipped_frames(self.drag_frames) if self.drag_frames else []
+
         self.walk_frames_flipped = make_flipped_frames(self.walk_frames) if self.walk_frames else []
 
+        # --- bubble ---
         bubble = QPixmap(str(BUBBLE_PATH))
         if bubble.isNull():
             self.bubble = None
@@ -65,39 +82,45 @@ class PetWindow(QWidget):
         self.resize(self.char_w, self.char_h + self.bubble_h)
         self.char_y = self.bubble_h
 
+        # start position
         self.screen_rect = QApplication.primaryScreen().availableGeometry()
         self.move(
-            random.randint(self.screen_rect.left(), self.screen_rect.right() - self.width()),
+            random.randint(self.screen_rect.left(), max(self.screen_rect.left(), self.screen_rect.right() - self.width())),
             self.screen_rect.bottom() - self.height(),
         )
 
+        # drag
         self.dragging = False
         self.drag_offset = QPoint(0, 0)
         self.setCursor(Qt.OpenHandCursor)
 
+        # speech
         self.say_text = ""
         self.say_until = 0.0
 
+        # mode
         self.mode = "normal"
         self.frame_i = 0
         self.mode_until = time.time() + 99999
 
-        self.current_face = random.choice(self.normal_faces or list(self.emotion_map.keys()))
+        self.current_face = self.state.last_face if self.state.last_face in self.emotion_map else random.choice(self.normal_faces or keys)
         self.next_normal_change = time.time() + NORMAL_RANDOM_INTERVAL
         self.face_until = 0.0
 
-        self.eat_static_i = 0
         self.shake_until = 0.0
         self.shake_strength = 0
 
+        # movement
         self.vx = random.choice([-2, -1, 1, 2])
         self.vy = 0
         self.gravity = 1
         self.ground_y = self.y()
 
+        # sleep
         self.sleeping = False
         self.sleep_end_at = 0.0
 
+        # timers
         self.anim_timer = QTimer(self)
         self.anim_timer.timeout.connect(self.advance_frame)
         self.anim_timer.start(200)
@@ -112,6 +135,9 @@ class PetWindow(QWidget):
 
         self.set_mode("normal", sec=99999)
 
+    # -------------------------
+    # public api
+    # -------------------------
     def get_available_faces(self) -> List[str]:
         return list(self.emotion_map.keys())
 
@@ -138,20 +164,18 @@ class PetWindow(QWidget):
             self.vy = -abs(int(strength))
 
     def set_mode(self, mode: str, sec: float = 1.5):
-        if mode not in ("normal", "walk", "sleep", "speak", "eat"):
+        if mode not in ("normal", "walk", "sleep", "speak", "eat", "drag"):
             mode = "normal"
         self.mode = mode
         self.frame_i = 0
         if mode in ANIM_SPEED_MS:
             self.anim_timer.start(ANIM_SPEED_MS[mode])
         else:
-            self.anim_timer.start(999999)
+            self.anim_timer.start(90 if mode == "drag" else 999999)
         self.mode_until = time.time() + float(sec)
         self.update()
 
     def trigger_eat_visual(self):
-        if self.eat_frames:
-            self.eat_static_i = random.randrange(len(self.eat_frames))
         self.set_mode("eat", sec=1.2)
         self.start_shake(sec=EAT_SHAKE_DURATION, strength=EAT_SHAKE_STRENGTH)
 
@@ -163,11 +187,14 @@ class PetWindow(QWidget):
         self.set_mode("sleep", sec=SLEEP_DURATION_SEC + 0.2)
         self.say("찍… 졸려… 잠깐 잘게…", duration=2.4)
 
+    # -------------------------
+    # movement/interaction
+    # -------------------------
     def auto_wander(self):
         self.wander_timer.start(random.randint(*WANDER_INTERVAL_MS_RANGE))
         if self.dragging or self.sleeping:
             return
-        if self.mode in ("walk", "sleep", "eat", "speak"):
+        if self.mode in ("walk", "sleep", "eat", "speak", "drag"):
             return
         if random.random() < 0.80:
             self.vx = random.choice([-3, -2, -1, 1, 2, 3])
@@ -180,12 +207,16 @@ class PetWindow(QWidget):
             self.press_pos = e.globalPosition().toPoint()
             self.drag_offset = self.press_pos - self.frameGeometry().topLeft()
             self.setCursor(Qt.ClosedHandCursor)
+
+            # ✅ drag mode
+            if self.drag_frames:
+                self.set_mode("drag", sec=99999)
             e.accept()
 
     def mouseMoveEvent(self, e):
         if self.dragging:
             current_pos = e.globalPosition().toPoint()
-            if (current_pos - self.press_pos).manhattanLength() > 4:
+            if self.press_pos and (current_pos - self.press_pos).manhattanLength() > 4:
                 self.was_dragged = True
             self.move(current_pos - self.drag_offset)
             e.accept()
@@ -195,6 +226,11 @@ class PetWindow(QWidget):
             self.dragging = False
             self.setCursor(Qt.OpenHandCursor)
             self.ground_y = min(self.y(), self.screen_rect.bottom() - self.height())
+
+            # drag mode end
+            if self.mode == "drag":
+                self.set_mode("normal", sec=99999)
+
             if not self.was_dragged:
                 self.on_pet_clicked()
             e.accept()
@@ -221,6 +257,8 @@ class PetWindow(QWidget):
             self.frame_i = (self.frame_i + 1) % len(self.speak_frames)
         elif self.mode == "eat" and self.eat_frames:
             self.frame_i = (self.frame_i + 1) % len(self.eat_frames)
+        elif self.mode == "drag" and self.drag_frames:
+            self.frame_i = (self.frame_i + 1) % len(self.drag_frames)
         self.update()
 
     def tick_logic(self):
@@ -244,7 +282,7 @@ class PetWindow(QWidget):
             self.state.last_face = self.current_face
             self.next_normal_change = now + NORMAL_RANDOM_INTERVAL
 
-        if (not self.sleeping) and now > self.mode_until and self.mode in ("walk", "sleep", "speak", "eat"):
+        if (not self.sleeping) and (not self.dragging) and now > self.mode_until and self.mode in ("walk", "sleep", "speak", "eat"):
             self.set_mode("normal", sec=99999)
 
         if (not self.sleeping) and (not self.dragging) and self.mode == "normal":
@@ -278,7 +316,14 @@ class PetWindow(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
 
-        if self.mode == "walk" and self.walk_frames:
+        # choose sprite
+        if self.mode == "drag" and self.drag_frames:
+            pix = (
+                self.drag_frames_flipped[self.frame_i]
+                if (self.vx < 0 and self.drag_frames_flipped)
+                else self.drag_frames[self.frame_i]
+            )
+        elif self.mode == "walk" and self.walk_frames:
             pix = (
                 self.walk_frames_flipped[self.frame_i]
                 if (self.vx < 0 and self.walk_frames_flipped)
@@ -293,6 +338,7 @@ class PetWindow(QWidget):
         else:
             pix = self.emotion_map.get(self.current_face) or next(iter(self.emotion_map.values()))
 
+        # shake
         dx = dy = 0
         if time.time() < self.shake_until and self.shake_strength > 0:
             dx = random.randint(-self.shake_strength, self.shake_strength)
@@ -300,6 +346,7 @@ class PetWindow(QWidget):
 
         painter.drawPixmap(dx, dy + self.char_y, pix)
 
+        # bubble
         if self.say_text and time.time() > self.say_until:
             self.say_text = ""
 
@@ -310,7 +357,6 @@ class PetWindow(QWidget):
 
             head_x = self.width() // 2
             head_y = self.char_y + int(pix.height() * 0.4)
-
             gap = int(2 * SCALE_CHAR)
             bx = max(0, min(self.width() - bubble_w, head_x - bubble_w // 2))
             by = max(0, head_y - bubble_h - gap)
@@ -330,6 +376,50 @@ class PetWindow(QWidget):
             painter.setPen(Qt.black)
             painter.drawText(text_rect, Qt.AlignCenter | Qt.TextWordWrap, self.say_text)
 
+    # -------------------------
+    # ✅ ControlPanel 연동 핵심
+    # -------------------------
     def send_chat_from_panel(self, msg: str, chat_log):
-        """ControlPanel에서 채팅 전송 시 호출"""
-        pass  # 실제 AI 호출 로직은 body.py 또는 main에서 연결
+        """
+        ControlPanel에서 채팅 전송 시 호출
+        - AI 결과를 말풍선/표정/상태에 적용
+        - chat_log에 '찍찍이: ...' 형식으로 출력
+        """
+        try:
+            payload = {
+                "event": "chat",
+                "text": msg,
+                "state": {
+                    "pet_name": self.state.pet_name,
+                    "hunger": float(self.state.hunger),
+                    "energy": float(self.state.energy),
+                    "mood": float(self.state.mood),
+                    "fun": float(self.state.fun),
+                    "money": int(self.state.money),
+                    "last_face": self.state.last_face,
+                },
+                "available_faces": self.get_available_faces(),
+            }
+
+            if call_groq_chat:
+                result = call_groq_chat(payload, timeout_sec=30.0)
+            else:
+                # fallback
+                result = {
+                    "reply": "찍… (AI 연결이 없어서 그냥 대답중!)",
+                    "face": self.state.last_face,
+                    "bubble_sec": 2.2,
+                    "delta": {"fun": 1, "mood": 0, "energy": 0, "hunger": 0},
+                    "commands": [],
+                }
+
+            apply_ai_result(self.state, self, result)
+
+            reply = str(result.get("reply", "")).strip()
+            if reply:
+                chat_log.append(f"{self.state.pet_name}: {reply}")
+        except Exception as ex:
+            try:
+                chat_log.append(f"[오류] AI 처리 실패: {ex}")
+            except Exception:
+                pass

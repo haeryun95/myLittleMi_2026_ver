@@ -1,12 +1,15 @@
 """
 windows/house_window.py - 집 창 + 집 안 펫 위젯
+- showEvent: 데스크탑 펫 숨김(확실)
+- closeEvent: 데스크탑 펫 복구
+- 배치 옆 '가구상점' 버튼
 """
 import random
 import time
 from typing import Dict, List, Optional
 
-from PySide6.QtCore import Qt, QRect, QTimer
-from PySide6.QtGui import QFont, QIcon, QPainter, QPixmap, QTransform
+from PySide6.QtCore import Qt, QRect, QTimer, QPoint
+from PySide6.QtGui import QFont, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QPushButton, QWidget
 
 from config import (
@@ -19,12 +22,27 @@ from state import PetState, clamp
 from utils.image_loader import load_folder_pixmaps_as_map, load_folder_pixmaps_as_list, make_flipped_frames
 from utils.json_utils import get_catalog, resolve_bg_path
 from ui.placement_panel import PlacementPanel
+from body import apply_ai_result
+
+try:
+    from groq_api import call_groq_chat
+except Exception:
+    call_groq_chat = None
+
+# ✅ 가구 상점(새 파일)
+from windows.furniture_shop_window import FurnitureShopWindow
 
 
 class HousePetWidget(QWidget):
     def __init__(self, state: PetState, parent=None):
         super().__init__(parent)
         self.state = state
+
+        # drag
+        self.dragging = False
+        self.drag_offset = QPoint(0, 0)
+        self.press_pos: Optional[QPoint] = None
+        self.was_dragged = False
 
         self.mode = "normal"
         self.frame_i = 0
@@ -50,6 +68,7 @@ class HousePetWidget(QWidget):
 
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setMouseTracking(True)
+        self.setCursor(Qt.OpenHandCursor)
 
         bubble = QPixmap(str(BUBBLE_PATH))
         if not bubble.isNull():
@@ -73,6 +92,11 @@ class HousePetWidget(QWidget):
         self.sleep_frames = load_folder_pixmaps_as_list(ANIM_DIR / "sleep", HOUSE_SCALE_CHAR)
         self.speak_frames = load_folder_pixmaps_as_list(ANIM_DIR / "speak", HOUSE_SCALE_CHAR)
         self.eat_frames = load_folder_pixmaps_as_list(ANIM_DIR / "eat", HOUSE_SCALE_CHAR)
+
+        # ✅ dragging frames
+        self.drag_frames = load_folder_pixmaps_as_list(ANIM_DIR / "draging", HOUSE_SCALE_CHAR)
+        self.drag_frames_flipped = make_flipped_frames(self.drag_frames) if self.drag_frames else []
+
         self.walk_frames_flipped = make_flipped_frames(self.walk_frames) if self.walk_frames else []
 
         any_pix = next(iter(self.emotion_map.values()))
@@ -126,15 +150,15 @@ class HousePetWidget(QWidget):
             self.vy = -abs(int(strength))
 
     def set_mode(self, mode: str, sec: float = 1.5):
-        if mode not in ("normal", "walk", "sleep", "speak", "eat"):
+        if mode not in ("normal", "walk", "sleep", "speak", "eat", "drag"):
             mode = "normal"
         self.mode = mode
         self.frame_i = 0
-        self.mode_until = time.time() + float(sec)
         if mode in ANIM_SPEED_MS:
             self.anim_timer.start(ANIM_SPEED_MS[mode])
         else:
-            self.anim_timer.start(999999)
+            self.anim_timer.start(90 if mode == "drag" else 999999)
+        self.mode_until = time.time() + float(sec)
         self.update()
 
     def trigger_eat_visual(self):
@@ -158,7 +182,7 @@ class HousePetWidget(QWidget):
 
     def auto_wander(self):
         self.wander_timer.start(random.randint(1200, 2600))
-        if self.sleeping or self.mode != "normal":
+        if self.sleeping or self.dragging or self.mode != "normal":
             return
         if random.random() < 0.85:
             self.vx = random.choice([-3, -2, -1, 1, 2, 3])
@@ -173,6 +197,8 @@ class HousePetWidget(QWidget):
             self.frame_i = (self.frame_i + 1) % len(self.speak_frames)
         elif self.mode == "eat" and self.eat_frames:
             self.frame_i = (self.frame_i + 1) % len(self.eat_frames)
+        elif self.mode == "drag" and self.drag_frames:
+            self.frame_i = (self.frame_i + 1) % len(self.drag_frames)
         self.update()
 
     def tick_logic(self):
@@ -191,84 +217,113 @@ class HousePetWidget(QWidget):
 
         self.reset_ground()
 
-        left = 0
-        right = (self.parent().width() - self.width()) if self.parent() else 0
+        if not self.dragging:
+            left = 0
+            right = (self.parent().width() - self.width()) if self.parent() else 0
+            x, y = self.x(), self.y()
 
-        x, y = self.x(), self.y()
-        if self.mode == "walk":
-            x += self.vx
-            if x <= left:
-                x = left
-                self.vx *= -1
-            elif x >= right:
-                x = right
-                self.vx *= -1
+            if self.mode == "walk":
+                x += self.vx
+                if x <= left:
+                    x = left
+                    self.vx *= -1
+                elif x >= right:
+                    x = right
+                    self.vx *= -1
 
-        self.vy += self.gravity
-        y += self.vy
-        if y >= self.ground_y:
-            y = self.ground_y
-            self.vy = 0
+            self.vy += self.gravity
+            y += self.vy
+            if y >= self.ground_y:
+                y = self.ground_y
+                self.vy = 0
 
-        self.move(int(x), int(y))
+            self.move(int(x), int(y))
+
         self.update()
 
-    def paintEvent(self, e):
-        painter = QPainter(self)
+    # ✅ 집에서도 클릭/드래그 상호작용
+    def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton:
+            self.dragging = True
+            self.was_dragged = False
+            self.press_pos = e.globalPosition().toPoint()
+            self.drag_offset = self.press_pos - self.frameGeometry().topLeft()
+            self.setCursor(Qt.ClosedHandCursor)
+            if self.drag_frames:
+                self.set_mode("drag", sec=99999)
+            e.accept()
+
+    def mouseMoveEvent(self, e):
+        if self.dragging:
+            cur = e.globalPosition().toPoint()
+            if self.press_pos and (cur - self.press_pos).manhattanLength() > 4:
+                self.was_dragged = True
+
+            target = cur - self.drag_offset
+
+            # house boundary clamp
+            parent = self.parent()
+            if parent:
+                target.setX(max(0, min(parent.width() - self.width(), target.x())))
+                target.setY(max(0, min(parent.height() - self.height(), target.y())))
+
+            self.move(target)
+            e.accept()
+
+    def mouseReleaseEvent(self, e):
+        if e.button() == Qt.LeftButton:
+            self.dragging = False
+            self.setCursor(Qt.OpenHandCursor)
+            self.reset_ground()
+            if self.mode == "drag":
+                self.set_mode("normal", sec=99999)
+            if not self.was_dragged:
+                self.on_pet_clicked()
+            e.accept()
+
+    def on_pet_clicked(self):
+        if self.sleeping:
+            self.say("찍… (골골)…", 1.8)
+            return
+        self.start_shake(sec=0.35, strength=2)
+        msg = random.choice(["집이 좋아…", "찍찍!", "여기서 놀자!", "헤헤…"])
+        self.say(msg, 2.0)
+        self.state.apply_delta({"fun": +2, "mood": +3, "energy": 0, "hunger": -0.3})
+
+    # ✅ ControlPanel 라우팅용(집이 열려있을 때 이쪽으로 답변 적용 가능)
+    def send_chat_from_panel(self, msg: str, chat_log):
         try:
-            painter.setRenderHint(QPainter.Antialiasing, True)
-
-            if self.mode == "walk" and self.walk_frames:
-                pix = (
-                    self.walk_frames_flipped[self.frame_i]
-                    if (self.vx < 0 and self.walk_frames_flipped)
-                    else self.walk_frames[self.frame_i]
-                )
-            elif self.mode == "sleep" and self.sleep_frames:
-                pix = self.sleep_frames[self.frame_i]
-            elif self.mode == "speak" and self.speak_frames:
-                pix = self.speak_frames[self.frame_i]
-            elif self.mode == "eat" and self.eat_frames:
-                pix = self.eat_frames[self.frame_i % len(self.eat_frames)]
+            payload = {
+                "event": "chat",
+                "text": msg,
+                "state": {
+                    "pet_name": self.state.pet_name,
+                    "hunger": float(self.state.hunger),
+                    "energy": float(self.state.energy),
+                    "mood": float(self.state.mood),
+                    "fun": float(self.state.fun),
+                    "money": int(self.state.money),
+                    "last_face": self.state.last_face,
+                },
+                "available_faces": self.get_available_faces(),
+            }
+            if call_groq_chat:
+                result = call_groq_chat(payload, timeout_sec=30.0)
             else:
-                pix = self.emotion_map.get(self.current_face) or next(iter(self.emotion_map.values()))
+                result = {
+                    "reply": "찍… (집에서도 대화 가능!)",
+                    "face": self.state.last_face,
+                    "bubble_sec": 2.2,
+                    "delta": {"fun": 1, "mood": 0, "energy": 0, "hunger": 0},
+                    "commands": [],
+                }
 
-            dx = dy = 0
-            if time.time() < self.shake_until and self.shake_strength > 0:
-                dx = random.randint(-self.shake_strength, self.shake_strength)
-                dy = random.randint(-self.shake_strength, self.shake_strength)
-
-            painter.drawPixmap(dx, dy + self.char_y, pix)
-
-            if self.say_text and time.time() > self.say_until:
-                self.say_text = ""
-
-            if self.say_text:
-                painter.setFont(QFont("온글잎 박다현체", 15))
-                bubble_w = self.bubble.width() if self.bubble else 220
-                bubble_h = self.bubble.height() if self.bubble else 54
-                head_x = self.width() // 2
-                head_y = self.char_y + int(pix.height() * 0.35)
-                gap = int(2 * HOUSE_SCALE_CHAR)
-                bx = max(0, min(self.width() - bubble_w, head_x - bubble_w // 2))
-                by = max(0, head_y - bubble_h - gap)
-                bubble_rect = QRect(bx, by, bubble_w, bubble_h)
-
-                if self.bubble:
-                    painter.drawPixmap(bx, by, self.bubble)
-                else:
-                    painter.setOpacity(0.88)
-                    painter.setBrush(Qt.white)
-                    painter.setPen(Qt.NoPen)
-                    painter.drawRoundedRect(bubble_rect, 12, 12)
-                    painter.setOpacity(1.0)
-
-                l, t, r, b = HOUSE_BUBBLE_PADDING
-                text_rect = bubble_rect.adjusted(l, t, -r, -b)
-                painter.setPen(Qt.black)
-                painter.drawText(text_rect, Qt.AlignCenter | Qt.TextWordWrap, self.say_text)
-        finally:
-            painter.end()
+            apply_ai_result(self.state, self, result)
+            reply = str(result.get("reply", "")).strip()
+            if reply:
+                chat_log.append(f"{self.state.pet_name}: {reply}")
+        except Exception as ex:
+            chat_log.append(f"[오류] 집펫 AI 처리 실패: {ex}")
 
 
 class HouseWindow(QWidget):
@@ -276,6 +331,7 @@ class HouseWindow(QWidget):
         super().__init__()
         self.state = state
         self.pet = desktop_pet
+        self.app_icon = app_icon
 
         self.setWindowTitle("집")
         self.setWindowFlags(Qt.WindowStaysOnTopHint)
@@ -291,6 +347,7 @@ class HouseWindow(QWidget):
         self.bg_pix: Dict[str, Dict[str, QPixmap]] = {cat: {} for cat in BG_CATEGORIES}
         self.reload_bg_pixmaps()
 
+        # ✅ 배치 버튼
         self.placement_btn = QPushButton("배치", self)
         self.placement_btn.setCursor(Qt.PointingHandCursor)
         self.placement_btn.setStyleSheet("""
@@ -302,13 +359,40 @@ class HouseWindow(QWidget):
             QPushButton:hover { background: rgba(255,255,255,210); }
         """)
         self.placement_btn.adjustSize()
-        self._reposition_overlay_ui()
         self.placement_btn.clicked.connect(self.open_placement_panel)
 
+        # ✅ 가구 상점 버튼(배치 옆)
+        self.furn_shop_btn = QPushButton("가구상점", self)
+        self.furn_shop_btn.setCursor(Qt.PointingHandCursor)
+        self.furn_shop_btn.setStyleSheet(self.placement_btn.styleSheet())
+        self.furn_shop_btn.adjustSize()
+        self.furn_shop_btn.clicked.connect(self.open_furniture_shop)
+
+        self._reposition_overlay_ui()
+
         self.placement_panel: Optional[PlacementPanel] = None
+        self.furniture_shop: Optional[FurnitureShopWindow] = None
+
         self.house_pet = HousePetWidget(self.state, parent=self)
         self.house_pet.raise_()
-        self.pet.hide()
+
+    def showEvent(self, e):
+        # ✅ 집 열 때마다 바깥 펫 숨김(확실)
+        try:
+            self.pet.hide()
+        except Exception:
+            pass
+        super().showEvent(e)
+
+    def open_furniture_shop(self):
+        if self.furniture_shop and self.furniture_shop.isVisible():
+            self.furniture_shop.raise_()
+            self.furniture_shop.activateWindow()
+            return
+        self.furniture_shop = FurnitureShopWindow(self.state, app_icon=self.app_icon, on_purchased=self._on_layer_changed)
+        self.furniture_shop.show()
+        self.furniture_shop.raise_()
+        self.furniture_shop.activateWindow()
 
     def reload_bg_pixmaps(self):
         catalog = get_catalog()
@@ -331,7 +415,7 @@ class HouseWindow(QWidget):
     def resizeEvent(self, e):
         super().resizeEvent(e)
         self._reposition_overlay_ui()
-        if not self.default_bg.isNull():
+        if not self.default_bg.isNull() and BG_DEFAULT_PATH.exists():
             self.default_bg = QPixmap(str(BG_DEFAULT_PATH)).scaled(
                 self.size(), Qt.IgnoreAspectRatio, Qt.SmoothTransformation
             )
@@ -340,7 +424,9 @@ class HouseWindow(QWidget):
 
     def _reposition_overlay_ui(self):
         margin = 10
+        # 오른쪽 상단: [가구상점][배치]
         self.placement_btn.move(self.width() - self.placement_btn.width() - margin, margin)
+        self.furn_shop_btn.move(self.placement_btn.x() - self.furn_shop_btn.width() - 8, margin)
 
     def open_placement_panel(self):
         if self.placement_panel and self.placement_panel.isVisible():
@@ -359,6 +445,7 @@ class HouseWindow(QWidget):
         self.update()
 
     def closeEvent(self, e):
+        # ✅ 집 닫으면 바깥 펫 복구
         try:
             self.pet.show()
             self.pet.raise_()
@@ -368,6 +455,7 @@ class HouseWindow(QWidget):
 
     def paintEvent(self, e):
         painter = QPainter(self)
+
         wp_id = self.state.selected_bg.get("wallpaper")
         if wp_id and wp_id in self.bg_pix["wallpaper"]:
             painter.drawPixmap(0, 0, self.bg_pix["wallpaper"][wp_id])

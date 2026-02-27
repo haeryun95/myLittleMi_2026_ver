@@ -164,10 +164,17 @@ class ControlPanel(QWidget):
 
         # 서브 창들
         self.name_window = NameWindow(self.state, app_icon=app_icon)
+
         self.house_win = HouseWindow(self.state, self.pet, app_icon=app_icon)
+
+        # ✅ 여기서 핵심: JobWindow는 icon이 아니라 app_icon을 받음
         self.job_win = JobWindow(self.state, app_icon=app_icon)
+
+        # 소모품 상점(StudyWindow에서 열 것)
         self.shop_win = ShopWindow(self.state, app_icon=app_icon)
-        self.study_win = StudyWindow(self.state, app_icon=app_icon)
+
+        # StudyWindow에 shop_win 주입(같은 창 공유)
+        self.study_win = StudyWindow(self.state, shop_win=self.shop_win, app_icon=app_icon)
 
         self._sync_ui()
         self.ui_timer = QTimer(self)
@@ -225,7 +232,7 @@ class ControlPanel(QWidget):
         if self.state.energy < 4:
             self._append_log("😴 에너지가 부족해서 못 놀겠어…")
             return
-        self.state.energy = clamp(self.state.energy - 4)
+        self.state.energy = clamp(self.state.energy - 4, 0.0, self.state.max_energy)
         self.state.fun = clamp(self.state.fun + 6)
         self.state.mood = clamp(self.state.mood + 1)
         self._append_log("🎮 같이 놀았다!")
@@ -240,11 +247,6 @@ class ControlPanel(QWidget):
         self.job_win.raise_()
         self.job_win.activateWindow()
 
-    def open_shop(self):
-        self.shop_win.show()
-        self.shop_win.raise_()
-        self.shop_win.activateWindow()
-
     def open_study(self):
         self.study_win.show()
         self.study_win.raise_()
@@ -258,14 +260,28 @@ class ControlPanel(QWidget):
     def _append_log(self, msg: str):
         self.chat_log.append(msg)
 
+    def _active_pet_for_chat(self):
+        # ✅ 집 창이 열려있으면 집 안 펫에게 대화 라우팅
+        try:
+            if self.house_win.isVisible():
+                return self.house_win.house_pet
+        except Exception:
+            pass
+        return self.pet
+
     def on_send(self):
         msg = (self.input.toPlainText() or "").strip()
         if not msg:
             return
+
         self._append_log(f"나: {msg}")
         self.input.clear()
+
+        target = self._active_pet_for_chat()
         try:
-            if hasattr(self.pet, "send_chat_from_panel"):
-                self.pet.send_chat_from_panel(msg, self.chat_log)
-        except Exception:
-            pass
+            if hasattr(target, "send_chat_from_panel"):
+                target.send_chat_from_panel(msg, self.chat_log)
+            else:
+                self.chat_log.append("[오류] 펫 객체에 send_chat_from_panel이 없어.")
+        except Exception as ex:
+            self.chat_log.append(f"[오류] 대화 처리 실패: {ex}")

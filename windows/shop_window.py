@@ -1,5 +1,5 @@
 """
-windows/shop_window.py - 상점 창
+windows/shop_window.py - 소모품 상점 창
 """
 from pathlib import Path
 from typing import Optional
@@ -30,7 +30,7 @@ class ShopWindow(QWidget):
         self.shop_json_path = shop_json_path
         self.items_json_path = items_json_path
 
-        self.setWindowTitle("상점")
+        self.setWindowTitle("소모품 상점")
         self.setWindowFlags(Qt.WindowStaysOnTopHint)
         if app_icon:
             self.setWindowIcon(app_icon)
@@ -46,9 +46,9 @@ class ShopWindow(QWidget):
         top.addWidget(self.money_label)
         top.addStretch(1)
 
-        hint = QLabel("상점에 들어올 때마다 자동으로 새로고침돼.")
-        hint.setObjectName("HintLabel")
-        top.addWidget(hint)
+        self.hint = QLabel("")
+        self.hint.setObjectName("HintLabel")
+        top.addWidget(self.hint)
         layout.addLayout(top)
 
         self.category_list = QListWidget()
@@ -75,26 +75,38 @@ class ShopWindow(QWidget):
         self.refresh_data()
 
     def showEvent(self, e):
-        try:
-            self.refresh_data()
-        except Exception:
-            pass
+        self.refresh_data()
         super().showEvent(e)
 
     def refresh_data(self):
-        self.shop_data = load_json_file(self.shop_json_path, fallback={"categories": [], "items": []})
-        self.items_db = load_json_file(self.items_json_path, fallback={"items": []})
+        self.shop_data = load_json_file(self.shop_json_path, fallback={"categories": [], "items": []}) or {"categories": [], "items": []}
+        self.items_db = load_json_file(self.items_json_path, fallback={"items": []}) or {"items": []}
+
+        self._sync_money()
+
+        # hint message
+        if not self.shop_json_path.exists():
+            self.hint.setText(f"⚠ shop.json 없음: {self.shop_json_path}")
+        elif not self.items_json_path.exists():
+            self.hint.setText(f"⚠ items.json 없음: {self.items_json_path}")
+        else:
+            self.hint.setText("상점은 열릴 때마다 자동 새로고침돼.")
 
         self.category_list.clear()
-        for cat in self.shop_data.get("categories", []):
+        cats = self.shop_data.get("categories", [])
+        if not isinstance(cats, list):
+            cats = []
+
+        for cat in cats:
             it = QListWidgetItem(cat.get("name", cat.get("id", "카테고리")))
             it.setData(Qt.UserRole, cat.get("id"))
             self.category_list.addItem(it)
 
-        if self.category_list.count() > 0 and not self.category_list.currentItem():
+        if self.category_list.count() > 0:
             self.category_list.setCurrentRow(0)
-
-        self._sync_money()
+        else:
+            self.item_list.clear()
+            self.status.setText("표시할 카테고리가 없어. shop.json의 categories를 확인해줘.")
 
     def _sync_money(self):
         self.money_label.setText(f"소지금 {int(self.state.money)}")
@@ -102,17 +114,20 @@ class ShopWindow(QWidget):
     def _on_category_changed(self):
         self.item_list.clear()
         self.status.setText("")
-        cat_id = None
+
         cur = self.category_list.currentItem()
-        if cur:
-            cat_id = cur.data(Qt.UserRole)
+        cat_id = cur.data(Qt.UserRole) if cur else None
 
-        items = []
-        for it in self.shop_data.get("items", []):
-            if it.get("category") == cat_id:
-                items.append(it)
+        items = self.shop_data.get("items", [])
+        if not isinstance(items, list):
+            items = []
 
-        for it in items:
+        filtered = [it for it in items if it.get("category") == cat_id]
+        if not filtered:
+            self.status.setText("이 카테고리에 등록된 상품이 없어. shop.json의 items를 확인해줘.")
+            return
+
+        for it in filtered:
             item_id = it.get("id")
             price = int(it.get("price", 0))
             name = item_name(self.items_db, item_id)
