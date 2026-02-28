@@ -1,6 +1,7 @@
 """
 windows/control_panel.py - 메인 컨트롤 패널 (채팅 + 상태 + 버튼들)
 """
+import random
 from typing import Optional
 
 from PySide6.QtCore import QEvent, Qt, QSize, QTimer
@@ -11,6 +12,7 @@ from PySide6.QtWidgets import (
 )
 
 from config import app_icon_DIR
+from utils.helpers import trigger_pet_action_bubble
 from state import PetState, clamp
 from windows.name_window import NameWindow
 from windows.house_window import HouseWindow
@@ -218,24 +220,65 @@ class ControlPanel(QWidget):
     # -------------------------
     # 버튼 동작
     # -------------------------
+    
     def feed_pet(self):
         self.state.hunger = clamp(self.state.hunger + 12)
         self.state.mood = clamp(self.state.mood + 1)
         self._append_log("🍚 밥을 줬다!")
+        
+        # 1. 대사 선택
+        msg = random.choice(["냠냠! 맛있어!", "배부르다 찍!", "밥 최고!"])
+        
+        # 2. 채팅 로그에 추가
+        self._append_log(f"{self.state.pet_name}: {msg}")
+        
+        # 3. 말풍선 띄우기 (리스트 대신 문자열 하나만 전달하도록 helper 함수를 수정하지 않고 이렇게 씀)
+        trigger_pet_action_bubble(
+            self._active_pet_for_chat(),
+            self.chat_log,
+            [msg]
+        )
 
     def pet_pet(self):
         self.state.mood = clamp(self.state.mood + 3)
         self.state.fun = clamp(self.state.fun + 1)
         self._append_log("💗 쓰다듬었다!")
 
+        msg = random.choice(["헤헤 기분 좋아 💗", "더 쓰다듬어줘!", "따뜻해..."])
+        self._append_log(f"{self.state.pet_name}: {msg}")
+
+        trigger_pet_action_bubble(
+            self._active_pet_for_chat(),
+            self.chat_log,
+            [msg]
+        )
+
     def play_pet(self):
         if self.state.energy < 4:
             self._append_log("😴 에너지가 부족해서 못 놀겠어…")
+            msg = random.choice(["너무 졸려... 나중에 놀자...", "힘들어 헉헉..."])
+            self._append_log(f"{self.state.pet_name}: {msg}")
+            
+            trigger_pet_action_bubble(
+                self._active_pet_for_chat(),
+                self.chat_log,
+                [msg]
+            )
             return
+            
         self.state.energy = clamp(self.state.energy - 4, 0.0, self.state.max_energy)
         self.state.fun = clamp(self.state.fun + 6)
         self.state.mood = clamp(self.state.mood + 1)
         self._append_log("🎮 같이 놀았다!")
+        
+        msg = random.choice(["야호! 재밌다!", "우다다다!", "한 번 더 놀자!"])
+        self._append_log(f"{self.state.pet_name}: {msg}")
+
+        trigger_pet_action_bubble(
+            self._active_pet_for_chat(),
+            self.chat_log,
+            [msg]
+        )
 
     def open_home(self):
         self.house_win.show()

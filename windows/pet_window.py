@@ -187,6 +187,25 @@ class PetWindow(QWidget):
         self.set_mode("sleep", sec=SLEEP_DURATION_SEC + 0.2)
         self.say("찍… 졸려… 잠깐 잘게…", duration=2.4)
 
+    def show_bubble(self, text: str, bubble_sec: float = 2.2):
+        """말풍선을 화면에 띄우고 일정 시간 뒤 숨김"""
+        self.say(text, duration=bubble_sec)
+        # 1. 말풍선 텍스트 설정 및 표시 (UI 라벨 이름이 bubble_label이라고 가정)
+        if not hasattr(self, 'bubble_label'):
+            return # bubble_label UI가 없다면 작동하지 않음
+            
+        self.bubble_label.setText(text)
+        self.bubble_label.show()
+
+        # 2. 지정된 시간(bubble_sec) 후 말풍선 숨기기
+        if hasattr(self, 'bubble_timer'):
+            self.bubble_timer.stop()
+        else:
+            self.bubble_timer = QTimer(self)
+            self.bubble_timer.setSingleShot(True)
+            self.bubble_timer.timeout.connect(self.bubble_label.hide)
+        
+        self.bubble_timer.start(int(bubble_sec * 1000))
     # -------------------------
     # movement/interaction
     # -------------------------
