@@ -1,11 +1,13 @@
 """
-windows/control_panel.py - 메인 컨트롤 패널 (상태 + 버튼들 + 로그)
+windows/control_panel.py - 메인 컨트롤 패널
 - 프레임리스(커스텀 프레임/타이틀바)
-- 테마 시스템: asset/ui/theme/{pink,dark}
-- 아이콘 분리: asset/ui/icon
-- 채팅(입력창, 전송버튼) 제거됨
-- 이름변경 버튼: 아이콘 버튼으로 변경
-- 기분 옆: 테마 변경 아이콘 버튼 추가
+- 테마: asset/ui/theme/{pink,dark}
+- 아이콘: asset/ui/icon
+- 채팅 입력창/전송버튼 제거됨(로그만)
+- 이름변경 버튼: 아이콘 버튼
+- 기분 옆: 테마 변경 아이콘 버튼
+- 최소화: 시스템 트레이로 숨김 (바탕화면 펫은 유지)
+- 닫기: 전체 프로그램 종료
 """
 
 import random
@@ -13,8 +15,9 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import Qt, QSize, QTimer, QPoint
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QAction
 from PySide6.QtWidgets import (
+    QApplication,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -23,6 +26,8 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QVBoxLayout,
     QWidget,
+    QMenu,
+    QSystemTrayIcon,
 )
 
 from config import app_icon_DIR
@@ -36,10 +41,9 @@ from windows.study_window import StudyWindow
 
 
 # -------------------------
-# Asset / Theme helpers
+# Asset helpers
 # -------------------------
 def _project_root() -> Path:
-    # windows/control_panel.py 기준: project_root/windows/control_panel.py
     return Path(__file__).resolve().parents[1]
 
 
@@ -49,7 +53,6 @@ THEME_DIR = ASSET_UI_DIR / "theme"
 
 
 def _p(p: Path) -> str:
-    # QSS에서 쓰기 좋게 file url 형태로
     return p.as_posix().replace("\\", "/")
 
 
@@ -61,43 +64,38 @@ def _exists(p: Path) -> bool:
 
 
 # -------------------------
-# Custom TitleBar (frameless drag region)
+# TitleBar (frameless drag)
 # -------------------------
 class TitleBar(QWidget):
-    """
-    window_titlebar.png 를 배경으로 쓰는 커스텀 타이틀바.
-    - 드래그 이동 지원
-    - 최소화/닫기 버튼
-    """
-
-    def __init__(self, parent_panel: "ControlPanel"):
-        super().__init__(parent_panel)
-        self.panel = parent_panel
+    def __init__(self, frame_parent: QWidget, panel: "ControlPanel"):
+        super().__init__(frame_parent)
+        self.panel = panel
         self.setObjectName("TitleBar")
         self.setFixedHeight(48)
+        
+        # ✅ QSS 배경 이미지(border-image)를 그리기 위해 반드시 필요한 설정
+        self.setAttribute(Qt.WA_StyledBackground, True)
 
         lay = QHBoxLayout(self)
         lay.setContentsMargins(12, 8, 12, 8)
         lay.setSpacing(8)
 
-        self.title_label = QLabel("라이미")
+        self.title_label = QLabel("라이미 - Panel")
         self.title_label.setObjectName("TitleLabel")
         lay.addWidget(self.title_label)
 
         lay.addStretch(1)
 
-        # 최소화 버튼(선택)
         self.min_btn = QPushButton("")
         self.min_btn.setObjectName("MinButton")
         self.min_btn.setFixedSize(32, 32)
-        self.min_btn.clicked.connect(self.panel.showMinimized)
+        self.min_btn.clicked.connect(self.panel.minimize_to_tray)
         lay.addWidget(self.min_btn)
 
-        # 닫기 버튼
         self.close_btn = QPushButton("")
         self.close_btn.setObjectName("CloseButton")
         self.close_btn.setFixedSize(32, 32)
-        self.close_btn.clicked.connect(self.panel.close)
+        self.close_btn.clicked.connect(self.panel.quit_app)
         lay.addWidget(self.close_btn)
 
         self._dragging = False
@@ -128,44 +126,55 @@ class ControlPanel(QWidget):
         state: PetState,
         pet,
         app_icon: Optional[QIcon] = None,
-        default_theme: str = "pink",  # "pink" or "dark"
+        default_theme: str = "pink",
     ):
         super().__init__()
         self.state = state
         self.pet = pet
-
-        # theme state
         self.theme = default_theme if default_theme in ("pink", "dark") else "pink"
 
-        # frameless window
-        self.setWindowTitle(f"{state.pet_name} - Control Panel")
+        # ✅ 마지막 서브 윈도우(집 등)가 닫힐 때 앱이 자동 종료되는 현상 방지
+        QApplication.instance().setQuitOnLastWindowClosed(False)
+
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
 
-        # size fixed
         self.setFixedSize(400, 600)
+        self.setWindowTitle(f"{state.pet_name} - Control Panel")
 
         if app_icon:
             self.setWindowIcon(app_icon)
 
-        # ---- Outer frame container (painted via QSS border-image)
+        self.tray: Optional[QSystemTrayIcon] = None
+        self._init_tray(app_icon)
+
+        # 전체 바깥 레이아웃
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
         self.frame = QWidget(self)
         self.frame.setObjectName("WindowFrame")
+        self.frame.setAttribute(Qt.WA_StyledBackground, True)
         outer.addWidget(self.frame)
 
-        root = QVBoxLayout(self.frame)
-        root.setContentsMargins(12, 12, 12, 12)
+        # ✅ 타이틀 바를 맨 위에 고정하기 위해 레이아웃 분리
+        frame_lay = QVBoxLayout(self.frame)
+        frame_lay.setContentsMargins(24, 24, 24, 24)  # 그림자(inset) 영역
+        frame_lay.setSpacing(0)
+
+        # 1. 최상단 타이틀 바
+        self.titlebar = TitleBar(self.frame, self)
+        frame_lay.addWidget(self.titlebar)
+
+        # 2. 내부 콘텐츠 컨테이너
+        content_widget = QWidget()
+        root = QVBoxLayout(content_widget)
+        root.setContentsMargins(0, 12, 0, 0) # 타이틀 바와 본문 사이 간격
         root.setSpacing(10)
+        frame_lay.addWidget(content_widget)
 
-        # TitleBar
-        self.titlebar = TitleBar(self)
-        root.addWidget(self.titlebar)
-
-        # Header row (money / name / rename / mood / theme)
+        # 이하 내부 요소들은 root(content_widget)에 추가
         header = QHBoxLayout()
         header.setSpacing(8)
 
@@ -173,13 +182,10 @@ class ControlPanel(QWidget):
         self.money_label.setObjectName("MoneyLabel")
         header.addWidget(self.money_label)
 
-        header.addSpacing(6)
-
         self.name_label = QLabel("")
         self.name_label.setObjectName("NameLabel")
         header.addWidget(self.name_label)
 
-        # rename icon button (텍스트 제거)
         self.rename_btn = QPushButton("")
         self.rename_btn.setObjectName("RenameIconButton")
         self.rename_btn.setFixedSize(32, 32)
@@ -192,7 +198,6 @@ class ControlPanel(QWidget):
         self.mood_label.setObjectName("MoodLabel")
         header.addWidget(self.mood_label)
 
-        # theme toggle button (기분 옆)
         self.theme_btn = QPushButton("")
         self.theme_btn.setObjectName("ThemeIconButton")
         self.theme_btn.setFixedSize(32, 32)
@@ -201,37 +206,16 @@ class ControlPanel(QWidget):
 
         root.addLayout(header)
 
-        # chat log (read-only)
         self.chat_log = QTextEdit()
         self.chat_log.setReadOnly(True)
         self.chat_log.setObjectName("ChatLog")
         self.chat_log.setMinimumHeight(220)
         root.addWidget(self.chat_log, 1)
 
-        # status bars (2x2가 UX상 더 예쁨)
-        self.fun_bar = QProgressBar()
-        self.fun_bar.setObjectName("BarFun")
-        self.fun_bar.setRange(0, 100)
-        self.fun_bar.setFormat("재미 %p%")
-        self.fun_bar.setTextVisible(True)
-
-        self.mood_bar = QProgressBar()
-        self.mood_bar.setObjectName("BarMood")
-        self.mood_bar.setRange(0, 100)
-        self.mood_bar.setFormat("기분 %p%")
-        self.mood_bar.setTextVisible(True)
-
-        self.hunger_bar = QProgressBar()
-        self.hunger_bar.setObjectName("BarHunger")
-        self.hunger_bar.setRange(0, 100)
-        self.hunger_bar.setFormat("배고픔 %p%")
-        self.hunger_bar.setTextVisible(True)
-
-        self.energy_bar = QProgressBar()
-        self.energy_bar.setObjectName("BarEnergy")
-        self.energy_bar.setRange(0, 100)
-        self.energy_bar.setFormat("에너지 %p%")
-        self.energy_bar.setTextVisible(True)
+        self.fun_bar = self._make_bar("BarFun", "재미 %p%")
+        self.mood_bar = self._make_bar("BarMood", "기분 %p%")
+        self.hunger_bar = self._make_bar("BarHunger", "배고픔 %p%")
+        self.energy_bar = self._make_bar("BarEnergy", "에너지 %p%")
 
         status_grid = QGridLayout()
         status_grid.setHorizontalSpacing(12)
@@ -242,7 +226,6 @@ class ControlPanel(QWidget):
         status_grid.addWidget(self.energy_bar, 1, 1)
         root.addLayout(status_grid)
 
-        # action buttons (3x2)
         btn_grid = QGridLayout()
         btn_grid.setHorizontalSpacing(10)
         btn_grid.setVerticalSpacing(10)
@@ -269,13 +252,12 @@ class ControlPanel(QWidget):
             b.setMinimumHeight(46)
             b.setObjectName("MenuButton")
 
-        # 기존 메뉴 아이콘(기존 asset 경로 유지)
-        self._try_set_icon(self.feed_btn, app_icon_DIR / "feed.png")
-        self._try_set_icon(self.pet_btn, app_icon_DIR / "pet.png")
-        self._try_set_icon(self.play_btn, app_icon_DIR / "play.png")
-        self._try_set_icon(self.home_btn, app_icon_DIR / "home.png")
-        self._try_set_icon(self.job_btn, app_icon_DIR / "job.png")
-        self._try_set_icon(self.study_btn, app_icon_DIR / "study.png")
+        self._try_set_menu_icon(self.feed_btn, app_icon_DIR / "feed.png")
+        self._try_set_menu_icon(self.pet_btn, app_icon_DIR / "pet.png")
+        self._try_set_menu_icon(self.play_btn, app_icon_DIR / "play.png")
+        self._try_set_menu_icon(self.home_btn, app_icon_DIR / "home.png")
+        self._try_set_menu_icon(self.job_btn, app_icon_DIR / "job.png")
+        self._try_set_menu_icon(self.study_btn, app_icon_DIR / "study.png")
 
         btn_grid.addWidget(self.feed_btn, 0, 0)
         btn_grid.addWidget(self.pet_btn, 0, 1)
@@ -289,14 +271,12 @@ class ControlPanel(QWidget):
         self.key_hint.setObjectName("KeyHint")
         root.addWidget(self.key_hint)
 
-        # sub windows
-        self.name_window = NameWindow(self.state, app_icon=app_icon)
+        self.name_window: Optional[NameWindow] = None
         self.house_win = HouseWindow(self.state, self.pet, app_icon=app_icon)
         self.job_win = JobWindow(self.state, app_icon=app_icon)
         self.shop_win = ShopWindow(self.state, app_icon=app_icon)
         self.study_win = StudyWindow(self.state, shop_win=self.shop_win, app_icon=app_icon)
 
-        # apply theme + icons
         self.apply_theme(self.theme)
 
         self._sync_ui()
@@ -305,7 +285,77 @@ class ControlPanel(QWidget):
         self.ui_timer.start(250)
 
     # -------------------------
-    # Theme
+    # Tray / App quit
+    # -------------------------
+    def _init_tray(self, app_icon: Optional[QIcon]):
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            self.tray = None
+            return
+
+        icon = app_icon if app_icon else self.windowIcon()
+        self.tray = QSystemTrayIcon(icon, self)
+        self.tray.setToolTip("MyLittleMi")
+
+        menu = QMenu()
+        act_restore = QAction("열기", self)
+        act_restore.triggered.connect(self.restore_from_tray)
+        menu.addAction(act_restore)
+
+        act_quit = QAction("종료", self)
+        act_quit.triggered.connect(self.quit_app)
+        menu.addAction(act_quit)
+
+        self.tray.setContextMenu(menu)
+        self.tray.activated.connect(self._on_tray_activated)
+        self.tray.show()
+
+    def _on_tray_activated(self, reason):
+        if reason == QSystemTrayIcon.Trigger:
+            self.restore_from_tray()
+
+    def minimize_to_tray(self):
+        self.hide()
+            
+        try:
+            self.house_win.hide()
+            self.job_win.hide()
+            self.study_win.hide()
+            self.shop_win.hide()
+            if self.name_window:
+                self.name_window.hide()
+        except Exception:
+            pass
+
+        if self.tray:
+            self.tray.showMessage("라이미", "트레이로 숨겼어! (아이콘 클릭하면 다시 열려)", QSystemTrayIcon.Information, 1200)
+
+    def restore_from_tray(self):
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
+    def quit_app(self):
+        try:
+            self.house_win.close()
+            self.job_win.close()
+            self.study_win.close()
+            self.shop_win.close()
+            if self.name_window:
+                self.name_window.close()
+            if self.pet:
+                self.pet.close()
+            if self.tray:
+                self.tray.hide()
+        except Exception:
+            pass
+        QApplication.instance().quit()
+
+    def closeEvent(self, e):
+        self.quit_app()
+        e.accept()
+
+    # -------------------------
+    # Theme / Assets
     # -------------------------
     def theme_path(self, filename: str) -> Path:
         return THEME_DIR / self.theme / filename
@@ -318,7 +368,6 @@ class ControlPanel(QWidget):
             theme_name = "pink"
         self.theme = theme_name
 
-        # load theme images
         window_frame = self.theme_path("window_frame.png")
         titlebar_bg = self.theme_path("window_titlebar.png")
 
@@ -331,33 +380,11 @@ class ControlPanel(QWidget):
         btn_min_p = self.theme_path("btn_min_pressed.png")
 
         btn_m = self.theme_path("btn_m.png")
-        btn_l = self.theme_path("btn_l.png")
-
-        panel_header = self.theme_path("panel_header.png")
         panel_chat = self.theme_path("panel_chat.png")
-        panel_status = self.theme_path("panel_status.png")
-
         bar_track = self.theme_path("bar_track.png")
-        speech_bubble = self.theme_path("speech_bubble.png")  # (다른 창/말풍선에서도 쓸 수 있음)
 
-        # icons
-        ic_close = self.icon_path("ic_close.png")
-        ic_min = self.icon_path("ic_min.png")
         ic_rename = self.icon_path("ic_rename.png")
         ic_theme = self.icon_path("ic_theme.png")
-
-        # icons set (fallback: text)
-        if _exists(ic_close):
-            self.titlebar.close_btn.setIcon(QIcon(str(ic_close)))
-            self.titlebar.close_btn.setIconSize(QSize(18, 18))
-        else:
-            self.titlebar.close_btn.setText("X")
-
-        if _exists(ic_min):
-            self.titlebar.min_btn.setIcon(QIcon(str(ic_min)))
-            self.titlebar.min_btn.setIconSize(QSize(18, 18))
-        else:
-            self.titlebar.min_btn.setText("—")
 
         if _exists(ic_rename):
             self.rename_btn.setIcon(QIcon(str(ic_rename)))
@@ -371,20 +398,23 @@ class ControlPanel(QWidget):
         else:
             self.theme_btn.setText("🎨")
 
-        # QSS
-        # NOTE: border-image inset은 너가 만든 에셋 기준으로 조정 가능.
+        text_color = "#ffffff" if self.theme == "dark" else "#333333"
+
         qss = f"""
         QWidget#WindowFrame {{
-            border-image: url({_p(window_frame)}) 24 24 24 24 stretch stretch;
+            background: transparent;
+            border-image: url("{_p(window_frame)}") 24 24 24 24 stretch stretch;
         }}
 
         QWidget#TitleBar {{
-            border-image: url({_p(titlebar_bg)}) 16 16 16 16 stretch stretch;
+            background: transparent;
+            border-image: url("{_p(titlebar_bg)}") 16 16 16 16 stretch stretch;
         }}
 
         QLabel#TitleLabel {{
             background: transparent;
-            font-weight: 700;
+            font-weight: 800;
+            color: {text_color};
         }}
 
         QPushButton#CloseButton, QPushButton#MinButton {{
@@ -392,33 +422,33 @@ class ControlPanel(QWidget):
             background: transparent;
         }}
 
-        /* close/min buttons with themed background */
         QPushButton#CloseButton {{
-            border-image: url({_p(btn_close_n)}) 12 12 12 12 stretch stretch;
+            image: url("{_p(btn_close_n)}");
         }}
         QPushButton#CloseButton:hover {{
-            border-image: url({_p(btn_close_h)}) 12 12 12 12 stretch stretch;
+            image: url("{_p(btn_close_h)}");
         }}
         QPushButton#CloseButton:pressed {{
-            border-image: url({_p(btn_close_p)}) 12 12 12 12 stretch stretch;
+            image: url("{_p(btn_close_p)}");
         }}
 
         QPushButton#MinButton {{
-            border-image: url({_p(btn_min_n)}) 12 12 12 12 stretch stretch;
+            image: url("{_p(btn_min_n)}");
         }}
         QPushButton#MinButton:hover {{
-            border-image: url({_p(btn_min_h)}) 12 12 12 12 stretch stretch;
+            image: url("{_p(btn_min_h)}");
         }}
         QPushButton#MinButton:pressed {{
-            border-image: url({_p(btn_min_p)}) 12 12 12 12 stretch stretch;
+            image: url("{_p(btn_min_p)}");
         }}
 
-        /* header labels */
         QLabel#MoneyLabel, QLabel#NameLabel, QLabel#MoodLabel {{
+            background: transparent;
             padding: 6px 10px;
+            font-weight: 700;
+            color: {text_color};
         }}
 
-        /* rename/theme icon buttons */
         QPushButton#RenameIconButton, QPushButton#ThemeIconButton {{
             border: none;
             background: transparent;
@@ -426,50 +456,57 @@ class ControlPanel(QWidget):
             min-height: 32px;
         }}
 
-        /* chat panel */
         QTextEdit#ChatLog {{
-            border-image: url({_p(panel_chat)}) 16 16 16 16 stretch stretch;
+            background: transparent;
+            border-image: url("{_p(panel_chat)}") 16 16 16 16 stretch stretch;
             padding: 10px;
+            color: {text_color};
         }}
 
-        /* progress bars: track + chunk */
         QProgressBar {{
-            border-image: url({_p(bar_track)}) 14 14 14 14 stretch stretch;
+            background: transparent;
+            border-image: url("{_p(bar_track)}") 14 14 14 14 stretch stretch;
             text-align: center;
             font-weight: 700;
+            color: {text_color};
         }}
         QProgressBar::chunk {{
-            /* theme별 fill이 아직 없어서 기본은 단색.
-               나중에 bar_fill_*.png 만들어서 여기 url로 바꾸면 됨 */
             background: rgba(255, 255, 255, 90);
             margin: 6px;
         }}
 
-        /* menu buttons */
         QPushButton#MenuButton {{
-            border-image: url({_p(btn_m)}) 14 14 14 14 stretch stretch;
+            background: transparent;
+            border-image: url("{_p(btn_m)}") 14 14 14 14 stretch stretch;
             padding: 6px 10px;
-            font-weight: 700;
-        }}
-        QPushButton#MenuButton:pressed {{
-            border-image: url({_p(btn_l)}) 14 14 14 14 stretch stretch; /* 눌림을 큰버튼으로 대체(임시) */
+            font-weight: 800;
+            color: {text_color};
         }}
 
         QLabel#KeyHint {{
             background: transparent;
             padding: 2px 4px;
+            color: {text_color};
         }}
         """
-
         self.setStyleSheet(qss)
 
     def toggle_theme(self):
-        self.apply_theme("dark" if self.theme == "pink" else "pink")
+        next_theme = "dark" if self.theme == "pink" else "pink"
+        self.apply_theme(next_theme)
 
     # -------------------------
     # UI helpers
     # -------------------------
-    def _try_set_icon(self, btn: QPushButton, path):
+    def _make_bar(self, obj_name: str, fmt: str) -> QProgressBar:
+        bar = QProgressBar()
+        bar.setObjectName(obj_name)
+        bar.setRange(0, 100)
+        bar.setFormat(fmt)
+        bar.setTextVisible(True)
+        return bar
+
+    def _try_set_menu_icon(self, btn: QPushButton, path):
         try:
             p = Path(path)
             if p.exists():
@@ -493,14 +530,54 @@ class ControlPanel(QWidget):
 
     def keyPressEvent(self, e):
         if e.key() == Qt.Key_Escape:
-            self.close()
+            self.quit_app()
             e.accept()
             return
         super().keyPressEvent(e)
 
     # -------------------------
-    # Button actions
+    # Sub windows
     # -------------------------
+    def open_name_change(self):
+        try:
+            if self.name_window is None:
+                self.name_window = NameWindow(self.state, app_icon=self.windowIcon())
+                self.name_window.setParent(self, Qt.Window)
+            self.name_window.show()
+            self.name_window.raise_()
+            self.name_window.activateWindow()
+        except Exception as ex:
+            self.chat_log.append(f"[에러] 이름 변경 창 열기 실패: {ex}")
+
+    def open_home(self):
+        self.house_win.show()
+        self.house_win.raise_()
+        self.house_win.activateWindow()
+
+    def open_job(self):
+        self.job_win.show()
+        self.job_win.raise_()
+        self.job_win.activateWindow()
+
+    def open_study(self):
+        self.study_win.show()
+        self.study_win.raise_()
+        self.study_win.activateWindow()
+
+    # -------------------------
+    # Actions
+    # -------------------------
+    def _append_log(self, msg: str):
+        self.chat_log.append(msg)
+
+    def _active_pet_for_chat(self):
+        try:
+            if self.house_win.isVisible():
+                return self.house_win.house_pet
+        except Exception:
+            pass
+        return self.pet
+
     def feed_pet(self):
         self.state.hunger = clamp(self.state.hunger + 12)
         self.state.mood = clamp(self.state.mood + 1)
@@ -555,34 +632,3 @@ class ControlPanel(QWidget):
             target.do_jump(strength=14)
 
         trigger_pet_action_bubble(target, self.chat_log, [msg])
-
-    def open_home(self):
-        self.house_win.show()
-        self.house_win.raise_()
-        self.house_win.activateWindow()
-
-    def open_job(self):
-        self.job_win.show()
-        self.job_win.raise_()
-        self.job_win.activateWindow()
-
-    def open_study(self):
-        self.study_win.show()
-        self.study_win.raise_()
-        self.study_win.activateWindow()
-
-    def open_name_change(self):
-        self.name_window.show()
-        self.name_window.raise_()
-        self.name_window.activateWindow()
-
-    def _append_log(self, msg: str):
-        self.chat_log.append(msg)
-
-    def _active_pet_for_chat(self):
-        try:
-            if self.house_win.isVisible():
-                return self.house_win.house_pet
-        except Exception:
-            pass
-        return self.pet

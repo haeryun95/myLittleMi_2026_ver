@@ -83,8 +83,17 @@ QPushButton:pressed {
     background: #c57a93;
 }
 
-#MenuButton {
-    min-height: 44px;
+QPushButton#MenuButton {
+    background-image: url(PATH_BTN_M);
+    background-repeat: no-repeat;
+    background-position: center;
+    border: none;
+    padding: 0px 10px; /* 텍스트 여백 */
+    font-weight: 700;
+}
+
+QPushButton#MenuButton:pressed {
+    background-image: url(PATH_BTN_L); /* pressed용 따로 있으면 그걸로 */
 }
 
 #PrimaryButton {
@@ -128,4 +137,13 @@ QListWidget::item:selected {
 #HintLabel {
     color: #6f3d53;
     padding: 2px 0;
+}
+
+QWidget#TitleBar { background: rgba(255,0,0,60); }
+
+QWidget#TitleBar {
+    background-image: url(PATH_TITLEBAR);
+    background-repeat: no-repeat;
+    background-position: top left;
+    border: none;
 }
