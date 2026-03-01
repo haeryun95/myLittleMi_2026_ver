@@ -5,7 +5,9 @@ windows/pet_window.py - 데스크탑 위에 떠다니는 펫 창
 """
 import random
 import time
+import json
 from typing import List, Optional
+from pathlib import Path
 
 from PySide6.QtCore import Qt, QPoint, QRect, QTimer
 from PySide6.QtGui import QFont, QIcon, QPainter, QPixmap
@@ -35,10 +37,14 @@ class PetWindow(QWidget):
         self.press_pos: Optional[QPoint] = None
         self.was_dragged = False
 
+        # ✅ 최상단 고정 플래그 유지
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         if app_icon:
             self.setWindowIcon(app_icon)
+        
+        self.current_action_pixmap = None  # 액션 시 고정할 이미지 저장용
+        self.idle_until = 0.0              # 가만히 서 있는 시간 제어
 
         # --- faces ---
         self.emotion_map = load_folder_pixmaps_as_map(ANIM_DIR / "emotion", SCALE_CHAR)
@@ -56,12 +62,14 @@ class PetWindow(QWidget):
         self.sleep_frames = load_folder_pixmaps_as_list(ANIM_DIR / "sleep", SCALE_CHAR)
         self.speak_frames = load_folder_pixmaps_as_list(ANIM_DIR / "speak", SCALE_CHAR)
         self.eat_frames = load_folder_pixmaps_as_list(ANIM_DIR / "eat", SCALE_CHAR)
+        self.sit_frames = load_folder_pixmaps_as_list(ANIM_DIR / "sit", SCALE_CHAR)
 
         # ✅ drag animation frames
-        self.drag_frames = load_folder_pixmaps_as_list(ANIM_DIR / "draging", SCALE_CHAR)
+        self.drag_frames = load_folder_pixmaps_as_list(ANIM_DIR / "dragging", SCALE_CHAR)
         self.drag_frames_flipped = make_flipped_frames(self.drag_frames) if self.drag_frames else []
 
         self.walk_frames_flipped = make_flipped_frames(self.walk_frames) if self.walk_frames else []
+        self.sit_frames_flipped = make_flipped_frames(self.sit_frames) if self.sit_frames else []
 
         # --- bubble ---
         bubble = QPixmap(str(BUBBLE_PATH))
@@ -112,6 +120,7 @@ class PetWindow(QWidget):
 
         # movement
         self.vx = random.choice([-2, -1, 1, 2])
+        self.facing_left = False
         self.vy = 0
         self.gravity = 1
         self.ground_y = self.y()
@@ -119,6 +128,10 @@ class PetWindow(QWidget):
         # sleep
         self.sleeping = False
         self.sleep_end_at = 0.0
+
+        # ✅ 랜덤 대화 데이터 로드
+        self.random_dialogues = []
+        self._load_dialogues()
 
         # timers
         self.anim_timer = QTimer(self)
@@ -134,6 +147,15 @@ class PetWindow(QWidget):
         self.wander_timer.start(random.randint(*WANDER_INTERVAL_MS_RANGE))
 
         self.set_mode("normal", sec=99999)
+
+    def _load_dialogues(self):
+        try:
+            path = Path(__file__).resolve().parents[1] / "asset" / "data" / "dialogue.json"
+            if path.exists():
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    self.random_dialogues = data.get("random_talks", [])
+        except Exception: pass
 
     # -------------------------
     # public api
@@ -164,21 +186,36 @@ class PetWindow(QWidget):
             self.vy = -abs(int(strength))
 
     def set_mode(self, mode: str, sec: float = 1.5):
-        if mode not in ("normal", "walk", "sleep", "speak", "eat", "drag"):
+        if mode not in ("normal", "walk", "sleep", "speak", "eat", "drag", "sit"):
             mode = "normal"
+        
         self.mode = mode
         self.frame_i = 0
+        self.mode_until = time.time() + float(sec)
+
+        # eat일 때 랜덤 1장 고정
+        if mode == "eat" and self.eat_frames:
+            self.current_action_pixmap = random.choice(self.eat_frames)
+        else:
+            self.current_action_pixmap = None
+
+        # ✅ 애니메이션 속도 설정
         if mode in ANIM_SPEED_MS:
             self.anim_timer.start(ANIM_SPEED_MS[mode])
+        elif mode == "sit":
+            self.anim_timer.start(100) # 앉아 있을 때 프레임 전환 속도
+        elif mode == "drag":
+            self.anim_timer.start(90)
         else:
-            self.anim_timer.start(90 if mode == "drag" else 999999)
-        self.mode_until = time.time() + float(sec)
+            self.anim_timer.start(999999) # normal 등은 정지
+        
         self.update()
 
     def trigger_eat_visual(self):
-        self.set_mode("eat", sec=1.2)
+        # ✅ set_mode 호출로 랜덤 이미지 고정 로직 실행
+        self.set_mode("eat", sec=1.5)
         self.start_shake(sec=EAT_SHAKE_DURATION, strength=EAT_SHAKE_STRENGTH)
-
+    
     def start_sleep_for_60s(self):
         if self.sleeping:
             return
@@ -188,36 +225,35 @@ class PetWindow(QWidget):
         self.say("찍… 졸려… 잠깐 잘게…", duration=2.4)
 
     def show_bubble(self, text: str, bubble_sec: float = 2.2):
-        """말풍선을 화면에 띄우고 일정 시간 뒤 숨김"""
         self.say(text, duration=bubble_sec)
-        # 1. 말풍선 텍스트 설정 및 표시 (UI 라벨 이름이 bubble_label이라고 가정)
-        if not hasattr(self, 'bubble_label'):
-            return # bubble_label UI가 없다면 작동하지 않음
-            
+        if not hasattr(self, 'bubble_label'): return 
         self.bubble_label.setText(text)
         self.bubble_label.show()
-
-        # 2. 지정된 시간(bubble_sec) 후 말풍선 숨기기
-        if hasattr(self, 'bubble_timer'):
-            self.bubble_timer.stop()
+        if hasattr(self, 'bubble_timer'): self.bubble_timer.stop()
         else:
             self.bubble_timer = QTimer(self)
             self.bubble_timer.setSingleShot(True)
             self.bubble_timer.timeout.connect(self.bubble_label.hide)
-        
         self.bubble_timer.start(int(bubble_sec * 1000))
+
     # -------------------------
     # movement/interaction
     # -------------------------
     def auto_wander(self):
         self.wander_timer.start(random.randint(*WANDER_INTERVAL_MS_RANGE))
-        if self.dragging or self.sleeping:
-            return
-        if self.mode in ("walk", "sleep", "eat", "speak", "drag"):
-            return
-        if random.random() < 0.80:
+        if self.dragging or self.sleeping: return
+        now = time.time()
+        if self.mode in ("eat", "speak", "sleep", "drag"): return
+
+        rand = random.random()
+        if rand < 0.25: 
+            self.facing_left = random.choice([True, False])
+            self.set_mode("sit", sec=random.uniform(2.0, 4.0))
+        elif rand < 0.70: 
             self.vx = random.choice([-3, -2, -1, 1, 2, 3])
-            self.set_mode("walk", sec=random.uniform(1.2, 3.0))
+            self.set_mode("walk", sec=random.uniform(1.5, 3.5))
+        else: 
+            self.set_mode("normal", sec=random.uniform(1.0, 2.0))
 
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton:
@@ -226,8 +262,6 @@ class PetWindow(QWidget):
             self.press_pos = e.globalPosition().toPoint()
             self.drag_offset = self.press_pos - self.frameGeometry().topLeft()
             self.setCursor(Qt.ClosedHandCursor)
-
-            # ✅ drag mode
             if self.drag_frames:
                 self.set_mode("drag", sec=99999)
             e.accept()
@@ -235,6 +269,9 @@ class PetWindow(QWidget):
     def mouseMoveEvent(self, e):
         if self.dragging:
             current_pos = e.globalPosition().toPoint()
+            diff_x = (current_pos - self.press_pos).x()
+            if diff_x < 0: self.facing_left = True
+            elif diff_x > 0: self.facing_left = False
             if self.press_pos and (current_pos - self.press_pos).manhattanLength() > 4:
                 self.was_dragged = True
             self.move(current_pos - self.drag_offset)
@@ -245,200 +282,153 @@ class PetWindow(QWidget):
             self.dragging = False
             self.setCursor(Qt.OpenHandCursor)
             self.ground_y = min(self.y(), self.screen_rect.bottom() - self.height())
-
-            # drag mode end
             if self.mode == "drag":
                 self.set_mode("normal", sec=99999)
-
             if not self.was_dragged:
                 self.on_pet_clicked()
             e.accept()
 
     def on_pet_clicked(self):
         if self.sleeping:
-            self.say("찍… (골골)…", 1.8)
-            return
+            self.sleep_end_at = time.time() # 즉시 깨어남
+            self.say("앗! 누가 깨웠어 찍!", 1.5)
+            return    
         self.start_shake(sec=0.35, strength=2)
         msg = random.choice(["헤헤…", "찍찍… 좋아!", "쓰담쓰담…", "기분 좋아…"])
         self.say(msg, 2.0)
         self.state.apply_delta({"fun": +3, "mood": +6, "energy": 0, "hunger": -0.5})
 
-    def keyPressEvent(self, e):
-        if e.key() == Qt.Key_Escape:
-            self.close()
-
     def advance_frame(self):
-        if self.mode == "walk" and self.walk_frames:
-            self.frame_i = (self.frame_i + 1) % len(self.walk_frames)
-        elif self.mode == "sleep" and self.sleep_frames:
-            self.frame_i = (self.frame_i + 1) % len(self.sleep_frames)
-        elif self.mode == "speak" and self.speak_frames:
-            self.frame_i = (self.frame_i + 1) % len(self.speak_frames)
-        elif self.mode == "eat" and self.eat_frames:
-            self.frame_i = (self.frame_i + 1) % len(self.eat_frames)
-        elif self.mode == "drag" and self.drag_frames:
-            self.frame_i = (self.frame_i + 1) % len(self.drag_frames)
+        mode_map = {
+            "walk": self.walk_frames, "sleep": self.sleep_frames,
+            "speak": self.speak_frames, "drag": self.drag_frames, "sit": self.sit_frames
+        }
+        frames = mode_map.get(self.mode)
+        if frames: self.frame_i = (self.frame_i + 1) % len(frames)
+        elif self.mode == "eat": self.frame_i += 1
         self.update()
 
     def tick_logic(self):
         now = time.time()
 
-        if self.sleeping and now >= self.sleep_end_at:
-            self.sleeping = False
-            self.state.energy = max(self.state.energy, SLEEP_RECOVER_ENERGY)
-            self.state.mood = clamp(self.state.mood + 4)
-            self.state.fun = clamp(self.state.fun + 2)
-            self.say("찍! 좀 나아졌어…", duration=2.2)
-            self.set_mode("normal", sec=99999)
+        # ✅ 최상단 강제 유지
+        if int(now * 10) % 20 == 0: self.raise_()
 
+        if self.sleeping:
+            if now >= self.sleep_end_at:
+                self.sleeping = False
+                self.state.energy = max(self.state.energy, SLEEP_RECOVER_ENERGY)
+                self.state.mood = clamp(self.state.mood + 4)
+                self.say("찍! 좀 나아졌어…", 2.2)
+                self.set_mode("normal", 99999)
+            else:
+                self.state.energy = clamp(self.state.energy + 0.15, 0, 100)
+            return
+
+        # ✅ 표정 업데이트 (happy와 normal 믹싱)
         if self.mode == "normal" and now > self.face_until and now >= self.next_normal_change:
-            low = (
-                (self.state.mood <= 35) or (self.state.fun <= 20)
-                or (self.state.energy <= 20) or (self.state.hunger <= 18)
-            )
-            pool = self.sad_faces if (low and self.sad_faces) else (self.normal_faces or list(self.emotion_map.keys()))
-            self.current_face = random.choice(pool)
-            self.state.last_face = self.current_face
+            mood = self.state.mood
+            if mood < 30:
+                pool = self.sad_faces or self.normal_faces
+            elif mood > 70:
+                happy_pool = [k for k in self.emotion_map.keys() if "happy" in k.lower()]
+                pool = happy_pool + self.normal_faces # 섞어서 출력
+            else:
+                pool = self.normal_faces
+            
+            if pool:
+                self.current_face = random.choice(pool)
+                self.state.last_face = self.current_face
             self.next_normal_change = now + NORMAL_RANDOM_INTERVAL
 
-        if (not self.sleeping) and (not self.dragging) and now > self.mode_until and self.mode in ("walk", "sleep", "speak", "eat"):
-            self.set_mode("normal", sec=99999)
-
-        if (not self.sleeping) and (not self.dragging) and self.mode == "normal":
-            if random.random() < 0.008:
-                self.vx = random.choice([-3, -2, -1, 1, 2, 3])
-                self.set_mode("walk", sec=random.uniform(0.9, 2.0))
+        # ✅ 랜덤 말걸기 이벤트 (speak 프레임 적용)
+        if self.mode == "normal" and not self.dragging and now > self.say_until:
+            if random.random() < 0.0005: # 약 0.05% 확률
+                if self.random_dialogues:
+                    msg = random.choice(self.random_dialogues)
+                    self.say(msg, 3.0)
+                    # ✅ 말할 때 speak 모드를 활성화하여 애니메이션 출력
+                    self.set_mode("speak", sec=3.0)
 
         if not self.dragging:
+            if now > self.mode_until and self.mode in ("walk", "sleep", "speak", "eat", "sit"):
+                self.set_mode("normal", 99999)
+            
             x, y = self.x(), self.y()
             floor_y = min(self.ground_y, self.screen_rect.bottom() - self.height())
-
             if self.mode == "walk":
                 x += self.vx
-                if x <= self.screen_rect.left():
-                    x = self.screen_rect.left()
-                    self.vx *= -1
-                elif x + self.width() >= self.screen_rect.right():
-                    x = self.screen_rect.right() - self.width()
-                    self.vx *= -1
-
+                if x <= self.screen_rect.left() or x + self.width() >= self.screen_rect.right(): self.vx *= -1
             self.vy += self.gravity
             y += self.vy
-            if y >= floor_y:
-                y = floor_y
-                self.vy = 0
+            if y >= floor_y: y, self.vy = floor_y, 0
             self.move(int(x), int(y))
-
         self.update()
 
     def paintEvent(self, e):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
-
-        # choose sprite
-        if self.mode == "drag" and self.drag_frames:
-            pix = (
-                self.drag_frames_flipped[self.frame_i]
-                if (self.vx < 0 and self.drag_frames_flipped)
-                else self.drag_frames[self.frame_i]
-            )
-        elif self.mode == "walk" and self.walk_frames:
-            pix = (
-                self.walk_frames_flipped[self.frame_i]
-                if (self.vx < 0 and self.walk_frames_flipped)
-                else self.walk_frames[self.frame_i]
-            )
-        elif self.mode == "sleep" and self.sleep_frames:
-            pix = self.sleep_frames[self.frame_i]
-        elif self.mode == "speak" and self.speak_frames:
-            pix = self.speak_frames[self.frame_i]
-        elif self.mode == "eat" and self.eat_frames:
-            pix = self.eat_frames[self.frame_i % len(self.eat_frames)]
-        else:
-            pix = self.emotion_map.get(self.current_face) or next(iter(self.emotion_map.values()))
-
-        # shake
-        dx = dy = 0
-        if time.time() < self.shake_until and self.shake_strength > 0:
-            dx = random.randint(-self.shake_strength, self.shake_strength)
-            dy = random.randint(-self.shake_strength, self.shake_strength)
-
-        painter.drawPixmap(dx, dy + self.char_y, pix)
-
-        # bubble
-        if self.say_text and time.time() > self.say_until:
-            self.say_text = ""
-
-        if self.say_text:
-            painter.setFont(QFont("온글잎 박다현체", 16))
-            bubble_w = self.bubble.width() if self.bubble else 220
-            bubble_h = self.bubble.height() if self.bubble else 54
-
-            head_x = self.width() // 2
-            head_y = self.char_y + int(pix.height() * 0.4)
-            gap = int(2 * SCALE_CHAR)
-            bx = max(0, min(self.width() - bubble_w, head_x - bubble_w // 2))
-            by = max(0, head_y - bubble_h - gap)
-            bubble_rect = QRect(bx, by, bubble_w, bubble_h)
-
-            if self.bubble:
-                painter.drawPixmap(bx, by, self.bubble)
-            else:
-                painter.setOpacity(0.88)
-                painter.setBrush(Qt.white)
-                painter.setPen(Qt.NoPen)
-                painter.drawRoundedRect(bubble_rect, 12, 12)
-                painter.setOpacity(1.0)
-
-            l, t, r, b = BUBBLE_PADDING
-            text_rect = bubble_rect.adjusted(l, t, -r, -b)
-            painter.setPen(Qt.black)
-            painter.drawText(text_rect, Qt.AlignCenter | Qt.TextWordWrap, self.say_text)
-
-    # -------------------------
-    # ✅ ControlPanel 연동 핵심
-    # -------------------------
-    def send_chat_from_panel(self, msg: str, chat_log):
-        """
-        ControlPanel에서 채팅 전송 시 호출
-        - AI 결과를 말풍선/표정/상태에 적용
-        - chat_log에 '찍찍이: ...' 형식으로 출력
-        """
+        
         try:
-            payload = {
-                "event": "chat",
-                "text": msg,
-                "state": {
-                    "pet_name": self.state.pet_name,
-                    "hunger": float(self.state.hunger),
-                    "energy": float(self.state.energy),
-                    "mood": float(self.state.mood),
-                    "fun": float(self.state.fun),
-                    "money": int(self.state.money),
-                    "last_face": self.state.last_face,
-                },
-                "available_faces": self.get_available_faces(),
-            }
+            now = time.time()
+            pix = None
 
-            if call_groq_chat:
-                result = call_groq_chat(payload, timeout_sec=30.0)
+            # 1. 모드별 프레임 선택 (반전 로직 포함)
+            if self.mode == "drag" and self.drag_frames:
+                frames = self.drag_frames_flipped if self.facing_left else self.drag_frames
+                pix = frames[self.frame_i % len(frames)]
+            elif self.mode == "eat" and self.current_action_pixmap:
+                pix = self.current_action_pixmap
+            elif self.mode == "speak" and self.speak_frames:
+                pix = self.speak_frames[self.frame_i % len(self.speak_frames)]
+            elif self.mode == "sit" and self.sit_frames:
+                frames = self.sit_frames_flipped if self.facing_left else self.sit_frames
+                pix = frames[self.frame_i % len(frames)]
+            elif self.mode == "walk" and self.walk_frames:
+                frames = self.walk_frames_flipped if self.vx < 0 else self.walk_frames
+                pix = frames[self.frame_i % len(frames)]
+            elif self.mode == "sleep" and self.sleep_frames:
+                pix = self.sleep_frames[self.frame_i % len(self.sleep_frames)]
             else:
-                # fallback
-                result = {
-                    "reply": "찍… (AI 연결이 없어서 그냥 대답중!)",
-                    "face": self.state.last_face,
-                    "bubble_sec": 2.2,
-                    "delta": {"fun": 1, "mood": 0, "energy": 0, "hunger": 0},
-                    "commands": [],
-                }
+                mood = self.state.mood
+                target_key = "happy" if mood > 70 else "sad" if mood < 30 else "normal"
+                matches = [k for k in self.emotion_map.keys() if target_key in k.lower()]
+                face_key = matches[0] if matches else self.current_face
+                pix = self.emotion_map.get(face_key) or next(iter(self.emotion_map.values()))
 
-            apply_ai_result(self.state, self, result)
+            # 2. 흔들림 효과
+            dx = dy = 0
+            if now < self.shake_until and self.shake_strength > 0:
+                dx = random.randint(-self.shake_strength, self.shake_strength)
+                dy = random.randint(-self.shake_strength, self.shake_strength)
 
-            reply = str(result.get("reply", "")).strip()
-            if reply:
-                chat_log.append(f"{self.state.pet_name}: {reply}")
-        except Exception as ex:
-            try:
-                chat_log.append(f"[오류] AI 처리 실패: {ex}")
-            except Exception:
-                pass
+            # 3. 그리기
+            if pix:
+                painter.drawPixmap(dx, dy + self.char_y, pix)
+
+                # 4. 말풍선 그리기 (높이 수정본 유지)
+                if self.say_text and now < self.say_until:
+                    font = QFont("온글잎 박다현체", 13)
+                    font.setBold(True)
+                    painter.setFont(font)
+                    bw = self.bubble.width() if self.bubble else 160
+                    bh = self.bubble.height() if self.bubble else 50
+                    bx = (self.width() - bw) // 2
+                    by = max(0, self.char_y - bh + 100) # 가깝게 조정된 수치
+                    bubble_rect = QRect(bx, by, bw, bh)
+
+                    if self.bubble: painter.drawPixmap(bx, by, self.bubble)
+                    else:
+                        painter.setOpacity(0.9); painter.setBrush(Qt.white); painter.setPen(Qt.NoPen)
+                        painter.drawRoundedRect(bubble_rect, 10, 10); painter.setOpacity(1.0)
+
+                    painter.setPen(Qt.black)
+                    l, t, r, b = (12, 8, 12, 8) 
+                    text_rect = bubble_rect.adjusted(l, t, -r, -b)
+                    painter.drawText(text_rect, Qt.AlignCenter | Qt.TextWordWrap, self.say_text)
+
+            elif self.say_text and now >= self.say_until: self.say_text = ""
+
+        finally:
+            painter.end()
+

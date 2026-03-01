@@ -4,8 +4,7 @@ windows/control_panel.py - 메인 컨트롤 패널
 - 테마: asset/ui/theme/{pink,dark}
 - 아이콘: asset/ui/icon
 - 채팅 입력창/전송버튼 제거됨(로그만)
-- 이름변경 버튼: 아이콘 버튼
-- 기분 옆: 테마 변경 아이콘 버튼
+- 헤더(PanelHeader) 배경 이미지 적용 및 아이콘 추가
 - 최소화: 시스템 트레이로 숨김 (바탕화면 펫은 유지)
 - 닫기: 전체 프로그램 종료
 """
@@ -170,13 +169,17 @@ class ControlPanel(QWidget):
         root.setSpacing(10)
         frame_lay.addWidget(content_widget)
 
-        # ✅ 헤더 재배치: 소지금 아이콘 | 소지금 | 이름 | 변경버튼 | 기분 | 테마버튼
-        header = QHBoxLayout()
+        # ✅ 헤더 영역 보호 및 배경 이미지 적용을 위한 설정
+        self.header_widget = QWidget()
+        self.header_widget.setObjectName("PanelHeader")
+        self.header_widget.setAttribute(Qt.WA_StyledBackground, True) # 배경을 렌더링하려면 필수
+        self.header_widget.setFixedHeight(48)
+        
+        header = QHBoxLayout(self.header_widget)
+        header.setContentsMargins(16, 0, 16, 0) # 헤더 내부 여백
         header.setSpacing(8)
 
         self.money_icon = QLabel()
-        self.money_icon.setFixedSize(20, 20)
-        self.money_icon.setScaledContents(True)
         header.addWidget(self.money_icon)
 
         self.money_label = QLabel("")
@@ -207,13 +210,20 @@ class ControlPanel(QWidget):
         self.theme_btn.clicked.connect(self.toggle_theme)
         header.addWidget(self.theme_btn)
 
-        root.addLayout(header)
+        root.addWidget(self.header_widget)
 
+        # 채팅 로그
         self.chat_log = QTextEdit()
         self.chat_log.setReadOnly(True)
         self.chat_log.setObjectName("ChatLog")
-        self.chat_log.setMinimumHeight(160)
+        self.chat_log.setMinimumHeight(140)
         root.addWidget(self.chat_log, 1)
+
+        # 상태바 UI 구성 (아이콘 + 프로그레스바)
+        self.icon_fun = QLabel()
+        self.icon_mood = QLabel()
+        self.icon_hunger = QLabel()
+        self.icon_energy = QLabel()
 
         self.fun_bar = self._make_bar("BarFun", "재미 %p%")
         self.mood_bar = self._make_bar("BarMood", "기분 %p%")
@@ -221,14 +231,24 @@ class ControlPanel(QWidget):
         self.energy_bar = self._make_bar("BarEnergy", "에너지 %p%")
 
         status_grid = QGridLayout()
-        status_grid.setHorizontalSpacing(12)
+        status_grid.setHorizontalSpacing(8)
         status_grid.setVerticalSpacing(8)
-        status_grid.addWidget(self.fun_bar, 0, 0)
-        status_grid.addWidget(self.mood_bar, 0, 1)
-        status_grid.addWidget(self.hunger_bar, 1, 0)
-        status_grid.addWidget(self.energy_bar, 1, 1)
+        
+        status_grid.addWidget(self.icon_fun, 0, 0)
+        status_grid.addWidget(self.fun_bar, 0, 1)
+        status_grid.addWidget(self.icon_mood, 0, 2)
+        status_grid.addWidget(self.mood_bar, 0, 3)
+        
+        status_grid.addWidget(self.icon_hunger, 1, 0)
+        status_grid.addWidget(self.hunger_bar, 1, 1)
+        status_grid.addWidget(self.icon_energy, 1, 2)
+        status_grid.addWidget(self.energy_bar, 1, 3)
+        
+        status_grid.setColumnStretch(1, 1)
+        status_grid.setColumnStretch(3, 1)
         root.addLayout(status_grid)
 
+        # 액션 버튼
         btn_grid = QGridLayout()
         btn_grid.setHorizontalSpacing(10)
         btn_grid.setVerticalSpacing(10)
@@ -236,7 +256,7 @@ class ControlPanel(QWidget):
         self.feed_btn = QPushButton("밥주기")
         self.feed_btn.clicked.connect(self.feed_pet)
 
-        self.pet_btn = QPushButton("쓰다듬기")
+        self.pet_btn = QPushButton("대화하기")
         self.pet_btn.clicked.connect(self.pet_pet)
 
         self.play_btn = QPushButton("놀아주기")
@@ -365,6 +385,16 @@ class ControlPanel(QWidget):
 
     def icon_path(self, filename: str) -> Path:
         return ICON_DIR / filename
+        
+    def _set_image_or_fallback(self, label: QLabel, path: Path, fallback_text: str):
+        label.setFixedSize(24, 24)
+        if _exists(path):
+            label.setPixmap(QPixmap(str(path)).scaled(24, 24, Qt.IgnoreAspectRatio, Qt.SmoothTransformation))
+            label.setStyleSheet("background: transparent; border: none;")
+        else:
+            label.setText(fallback_text)
+            label.setAlignment(Qt.AlignCenter)
+            label.setStyleSheet("background-color: #ff99cc; color: #ffffff; border-radius: 6px; font-weight: 900; font-size: 13px;")
 
     def apply_theme(self, theme_name: str):
         if theme_name not in ("pink", "dark"):
@@ -372,6 +402,12 @@ class ControlPanel(QWidget):
         self.theme = theme_name
 
         window_frame = self.theme_path("window_frame.png")
+        titlebar_bg = self.theme_path("window_titlebar.png")
+        panel_header = self.theme_path("panel_header.png")
+        
+        # ✅ 테두리와 빈 트랙 이미지 분리
+        panel_status = self.theme_path("panel_status.png")
+        bar_track = self.theme_path("bar_track.png")
 
         btn_close_n = self.theme_path("btn_close_normal.png")
         btn_close_h = self.theme_path("btn_close_hover.png")
@@ -383,47 +419,61 @@ class ControlPanel(QWidget):
 
         btn_m = self.theme_path("btn_m.png")
         panel_chat = self.theme_path("panel_chat.png")
-        bar_track = self.theme_path("bar_track.png")
+
+        self._set_image_or_fallback(self.money_icon, self.icon_path("ic_coin.png"), "💰")
+        self._set_image_or_fallback(self.icon_fun, self.icon_path("ic_fun.png"), "F")
+        self._set_image_or_fallback(self.icon_mood, self.icon_path("ic_mood.png"), "M")
+        self._set_image_or_fallback(self.icon_hunger, self.icon_path("ic_hunger.png"), "H")
+        self._set_image_or_fallback(self.icon_energy, self.icon_path("ic_energy.png"), "E")
 
         ic_rename = self.icon_path("ic_rename.png")
         ic_theme = self.icon_path("ic_theme.png")
-        ic_coin = self.icon_path("ic_coin.png") # ✅ 코인 아이콘 추가
 
         if _exists(ic_rename):
             self.rename_btn.setIcon(QIcon(str(ic_rename)))
-            self.rename_btn.setIconSize(QSize(18, 18))
+            self.rename_btn.setIconSize(QSize(20, 20))
+            self.rename_btn.setText("")
         else:
+            self.rename_btn.setIcon(QIcon())
             self.rename_btn.setText("✎")
 
         if _exists(ic_theme):
             self.theme_btn.setIcon(QIcon(str(ic_theme)))
-            self.theme_btn.setIconSize(QSize(18, 18))
+            self.theme_btn.setIconSize(QSize(20, 20))
+            self.theme_btn.setText("")
         else:
+            self.theme_btn.setIcon(QIcon())
             self.theme_btn.setText("🎨")
-            
-        if _exists(ic_coin):
-            self.money_icon.setPixmap(QPixmap(str(ic_coin)))
-        else:
-            self.money_icon.setText("💰")
-            self.money_icon.setAlignment(Qt.AlignCenter)
 
         text_color = "#ffffff" if self.theme == "dark" else "#333333"
 
-        # ✅ slice 설정(24 24 24 24)을 0 0 0 0으로 바꿔서 원본 비율 강제 유지
-        # ✅ TitleBar 배경을 투명하게 해서 겹침 현상 제거
+        # ✅ 상태바에 3중 레이어 적용 (테두리 이미지 -> 빈 트랙 이미지 -> 청크 단색)
         qss = f"""
         QWidget#WindowFrame {{
-            background: transparent;
-            border-image: url("{_p(window_frame)}") 0 0 0 0 stretch stretch;
+            background-color: transparent;
+            background-image: url("{_p(window_frame)}");
+            background-position: top left;
+            background-repeat: no-repeat;
         }}
 
         QWidget#TitleBar {{
-            background: transparent;
+            background-color: transparent;
+            background-image: url("{_p(titlebar_bg)}");
+            background-position: top left;
+            background-repeat: no-repeat;
+        }}
+        
+        QWidget#PanelHeader {{
+            background-color: transparent;
+            background-image: url("{_p(panel_header)}");
+            background-position: center;
+            background-repeat: no-repeat;
         }}
 
         QLabel#TitleLabel {{
             background: transparent;
             font-weight: 800;
+            font-size: 14px;
             color: {text_color};
         }}
 
@@ -452,37 +502,57 @@ class ControlPanel(QWidget):
             image: url("{_p(btn_min_p)}");
         }}
 
-        QLabel#MoneyLabel, QLabel#NameLabel, QLabel#MoodLabel, QLabel {{
+        QLabel#MoneyLabel, QLabel#NameLabel, QLabel#MoodLabel {{
             background: transparent;
-            font-weight: 700;
+            font-weight: 800;
+            font-size: 14px;
             color: {text_color};
         }}
 
         QPushButton#RenameIconButton, QPushButton#ThemeIconButton {{
             border: none;
             background: transparent;
-            min-width: 28px;
-            min-height: 28px;
         }}
 
         QTextEdit#ChatLog {{
             background: transparent;
             border-image: url("{_p(panel_chat)}") 16 16 16 16 stretch stretch;
             padding: 10px;
+            font-size: 13px;
             color: {text_color};
         }}
 
+        /* ✅ 프로그레스 바(상태바) 프레임 및 빈 트랙 */
         QProgressBar {{
-            background: transparent;
-            border-image: url("{_p(bar_track)}") 14 14 14 14 stretch stretch;
+            background-color: transparent;
+            /* 1. 밑바닥에 깔리는 빈 트랙 이미지 */
+            background-image: url("{_p(bar_track)}");
+            background-position: center left;
+            background-repeat: no-repeat;
+            
+            /* 2. 그 위를 덮는 테두리 이미지 (늘어나도 안 깨지게 slice 지정) */
+            border-image: url("{_p(panel_status)}") 4 4 4 4 stretch stretch;
+            
             text-align: center;
-            font-weight: 700;
+            font-weight: 800;
             color: {text_color};
+            min-height: 22px;
+            
+            /* 테두리 두께만큼 내부 게이지가 안쪽으로 들어가도록 여백 설정 */
+            padding: 3px; 
         }}
+        
+        /* ✅ 채워지는 게이지(chunk) 기본 설정 */
         QProgressBar::chunk {{
-            background: rgba(255, 255, 255, 90);
-            margin: 6px;
+            border-radius: 4px;
+            margin: 1px;
         }}
+
+        /* ✅ 각 상태바별 고유 채우기 색상 (bar_track_color 역할) */
+        QProgressBar#BarFun::chunk {{ background-color: #FF99CC; }}     /* 재미: 핑크 */
+        QProgressBar#BarMood::chunk {{ background-color: #FFCC00; }}    /* 기분: 노랑 */
+        QProgressBar#BarHunger::chunk {{ background-color: #66CC66; }}  /* 배고픔: 초록 */
+        QProgressBar#BarEnergy::chunk {{ background-color: #3399FF; }}  /* 에너지: 파랑 */
 
         QPushButton#MenuButton {{
             background: transparent;
@@ -495,6 +565,7 @@ class ControlPanel(QWidget):
         QLabel#KeyHint {{
             background: transparent;
             padding: 2px 4px;
+            font-size: 11px;
             color: {text_color};
         }}
         """
