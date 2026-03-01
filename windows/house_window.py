@@ -402,7 +402,7 @@ class HousePetWidget(QWidget):
             self.say_text = ""
 
         if self.say_text:
-            painter.setFont(QFont("온글잎 박다현체", 14))
+            painter.setFont(QFont("", 14))
             bubble_w = self.bubble.width() if self.bubble else int(180 * HOUSE_SCALE_CHAR)
             bubble_h = self.bubble.height() if self.bubble else int(50 * HOUSE_SCALE_CHAR)
 

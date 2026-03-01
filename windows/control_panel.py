@@ -124,33 +124,34 @@ class ControlPanel(QWidget):
         self.root.setSpacing(0)
         frame_lay.addWidget(content_widget)
 
+        # ControlPanel.__init__ 내부 헤더 부분
         self.header_widget = StyledWidget()
         self.header_widget.setObjectName("PanelHeader")
-        self.header_widget.setFixedHeight(43)
+        self.header_widget.setFixedHeight(50)
         h_lay = QHBoxLayout(self.header_widget)
         h_lay.setContentsMargins(15, 0, 15, 0)
+        h_lay.setSpacing(12)
         
-        self.money_btn = QPushButton(); self.money_btn.setObjectName("HeaderIconButton")
-        self.money_btn.setFixedSize(28, 28)
-        self.money_label = QLabel(""); self.money_label.setObjectName("MoneyLabel")
+        # [소지금 아이콘 + 수치]
+        self.money_icon = QLabel(); self.money_icon.setFixedSize(24, 24)
+        self.money_label = QLabel("0"); self.money_label.setObjectName("MoneyLabel")
         
+        # [펫 이름]
         self.name_label = QLabel(""); self.name_label.setObjectName("NameLabel")
-        self.rename_btn = QPushButton(""); self.rename_btn.setObjectName("HeaderIconButton")
-        self.rename_btn.setFixedSize(28, 28)
-        self.rename_btn.clicked.connect(self.open_name_change)
+        self.name_label.setStyleSheet("font-weight: bold; font-size: 14px;")
 
-        h_lay.addWidget(self.money_btn); h_lay.addWidget(self.money_label)
-        h_lay.addSpacing(10); h_lay.addWidget(self.name_label); h_lay.addWidget(self.rename_btn)
-        h_lay.addStretch(1)
-
+        # [감정 상태]
         self.mood_label = QLabel(""); self.mood_label.setObjectName("MoodLabel")
-        self.theme_btn = QPushButton(""); self.theme_btn.setObjectName("HeaderIconButton")
-        self.theme_btn.setFixedSize(28, 28)
-        self.theme_btn.clicked.connect(self.toggle_theme)
+        self.mood_label.setAlignment(Qt.AlignCenter)
+        self.mood_label.setStyleSheet("background: rgba(255,255,255,0.2); border-radius: 10px; padding: 2px 8px;")
+
+        h_lay.addWidget(self.money_icon); h_lay.addWidget(self.money_label)
+        h_lay.addStretch(1) # 중앙 정렬 효과를 위해 간격 조절
+        h_lay.addWidget(self.name_label)
+        h_lay.addStretch(1)
+        h_lay.addWidget(self.mood_label)
         
-        h_lay.addWidget(self.mood_label); h_lay.addWidget(self.theme_btn)
         self.root.addWidget(self.header_widget)
-        self.root.addSpacing(8)
 
         # ✅ 스크롤바 유지 및 채팅로그
         self.chat_log = QTextEdit()
@@ -230,7 +231,7 @@ class ControlPanel(QWidget):
         # ✅ 하단 ESC 안내문 추가 (가운데 정렬, 옅은 회색)
         self.guide_label = QLabel("ESC = 패널 닫기")
         self.guide_label.setAlignment(Qt.AlignCenter)
-        self.guide_label.setStyleSheet("color: #fff; font-size: 16px; font-weight: bold; margin-bottom: 2px;")
+        self.guide_label.setStyleSheet("color: #fff; font-size: 14px; font-weight: bold; margin-bottom: 2px;")
         self.root.addWidget(self.guide_label)
 
         for btn in self.findChildren(QPushButton):
@@ -265,28 +266,33 @@ class ControlPanel(QWidget):
         self._update_icons()
 
     def _update_icons(self):
+        # 1. 타이틀바 시스템 아이콘
         sys_p = ICON_DIR / "ic_main.png" 
         if sys_p.exists():
             pix = QPixmap(str(sys_p.resolve()))
             self.titlebar.sys_icon.setScaledContents(True) 
             self.titlebar.sys_icon.setPixmap(pix.scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         
+        # 2. 헤더 소지금 아이콘 (버튼 대신 라벨에 픽스맵 설정)
         coin_p = ICON_DIR / "ic_coin.png"
         if coin_p.exists():
-            self.money_btn.setIcon(QIcon(str(coin_p.resolve()))); self.money_btn.setIconSize(QSize(28, 28))
+            pix = QPixmap(str(coin_p.resolve())).scaled(24, 24, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.money_icon.setPixmap(pix)  # ✅ money_btn 대신 money_icon 사용
         
-        for btn, path in [(self.rename_btn, ICON_DIR / "ic_rename.png"), (self.theme_btn, ICON_DIR / "ic_theme.png")]:
-            if path.exists(): btn.setIcon(QIcon(str(path.resolve()))); btn.setIconSize(QSize(28, 28))
-
-        # ✅ 여기서 4개의 값을 받도록 수정 (val_lbl 추가)
+        # 3. 상태바(Gauge) 아이콘 업데이트
         for key in self.status_rows:
             gauge, btn, img_name, val_lbl = self.status_rows[key]
             path = ICON_DIR / img_name
-            if path.exists(): btn.setIcon(QIcon(str(path.resolve()))); btn.setIconSize(QSize(28, 28))
+            if path.exists(): 
+                btn.setIcon(QIcon(str(path.resolve())))
+                btn.setIconSize(QSize(28, 28))
 
+        # 4. 하단 액션 버튼 아이콘 업데이트
         for btn, img_name in self.btn_widgets:
             path = app_icon_DIR / img_name
-            if path.exists(): btn.setIcon(QIcon(str(path.resolve()))); btn.setIconSize(QSize(28, 28))
+            if path.exists(): 
+                btn.setIcon(QIcon(str(path.resolve())))
+                btn.setIconSize(QSize(28, 28))
 
     def _sync_ui(self):
         self.money_label.setText(str(int(self.state.money)))
@@ -306,7 +312,17 @@ class ControlPanel(QWidget):
             
         self.titlebar.title_label.setText(f"{self.state.pet_name} - 메인 화면")
 
-    def open_settings(self): pass
+    
+    def open_settings(self):
+        if not hasattr(self, 'settings_win') or self.settings_win is None:
+            self.settings_win = SettingsWindow(self.state, self, self.windowIcon())
+        
+        # 패널 근처에 표시
+        pos = self.geometry().topRight()
+        self.settings_win.move(pos.x() + 10, pos.y())
+        self.settings_win.show()
+        self.settings_win.raise_()
+
     def minimize_to_tray(self): self.hide()
     def quit_app(self): QApplication.instance().quit()
     def _init_tray(self, icon):
@@ -550,3 +566,50 @@ class ControlPanel(QWidget):
         if self.name_window is None:
             self.name_window = NameWindow(self.state, self.windowIcon())
         self.name_window.show(); self.name_window.raise_()
+
+    
+class SettingsWindow(StyledWidget):
+    def __init__(self, state: PetState, panel: "ControlPanel", icon: QIcon):
+        super().__init__()
+        self.state, self.panel = state, panel
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        self.setFixedSize(300, 400)
+        self.setObjectName("SettingsWindow")
+        
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(20, 20, 20, 20)
+        
+        title = QLabel("설정"); title.setStyleSheet("font-size: 18px; font-weight: bold; color: white;")
+        lay.addWidget(title)
+
+        # 1. 내 이름 설정
+        lay.addWidget(QLabel("내 이름 (사용자)"))
+        self.user_input = QTextEdit(); self.user_input.setFixedHeight(30)
+        self.user_input.setText(self.panel.user_name)
+        lay.addWidget(self.user_input)
+
+        # 2. 펫 이름 변경 (기존 NameWindow 통합)
+        lay.addWidget(QLabel("펫 이름"))
+        self.pet_input = QTextEdit(); self.pet_input.setFixedHeight(30)
+        self.pet_input.setText(self.state.pet_name)
+        lay.addWidget(self.pet_input)
+        
+        # 3. 테마 변경
+        lay.addWidget(QLabel("테마 선택"))
+        theme_lay = QHBoxLayout()
+        for t in ["pink", "dark"]:
+            btn = QPushButton(t.capitalize())
+            btn.clicked.connect(lambda _, name=t: self.panel.apply_theme(name))
+            theme_lay.addWidget(btn)
+        lay.addLayout(theme_lay)
+
+        lay.addStretch()
+        
+        save_btn = QPushButton("저장 및 닫기")
+        save_btn.clicked.connect(self.save_settings)
+        lay.addWidget(save_btn)
+
+    def save_settings(self):
+        self.panel.user_name = self.user_input.toPlainText().strip()
+        self.state.pet_name = self.pet_input.toPlainText().strip()
+        self.close()

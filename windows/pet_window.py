@@ -425,7 +425,7 @@ class PetWindow(QWidget):
 
                 # 4. 말풍선 그리기 (높이 수정본 유지)
                 if self.say_text and now < self.say_until:
-                    font = QFont("온글잎 박다현체", 13)
+                    font = QFont("Galmuri14", 13)
                     font.setBold(True)
                     painter.setFont(font)
                     bw = self.bubble.width() if self.bubble else 160
