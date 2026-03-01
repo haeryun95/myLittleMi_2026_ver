@@ -487,54 +487,63 @@ class ControlPanel(QWidget):
                     # 데스크톱 펫의 애니메이션 모드도 즉시 sleep으로 변경
                     remain = max(0.1, h_pet.sleep_end_at - time.time())
                     self.pet.set_mode("sleep", sec=remain)
+    # -------------------------
+    # 창 관리 및 펫 상태 동기화 (종합)
+    # -------------------------
+    def _sync_and_show_main_pet(self, sub_window):
+        """하위 창이 닫힐 때 해당 창의 펫 상태를 메인 펫으로 복사하고 메인 펫을 표시함"""
+        # 하위 창 내부에 펫 객체가 있는지 확인 (house_pet 또는 pet)
+        sub_pet = getattr(sub_window, 'house_pet', getattr(sub_window, 'pet', None))
+        
+        if sub_pet and self.pet:
+            # 1. 수면 상태 동기화
+            if getattr(sub_pet, 'sleeping', False):
+                self.pet.sleeping = True
+                self.pet.sleep_end_at = sub_pet.sleep_end_at
+                # 메인 펫이 나타나자마자 자는 모습이도록 모드 설정
+                remain = max(0.1, sub_pet.sleep_end_at - time.time())
+                self.pet.set_mode("sleep", sec=remain)
+            else:
+                # 자고 있지 않다면 수면 상태 해제
+                self.pet.sleeping = False
+                self.pet.set_mode("normal", sec=99999)
 
-                    
+        # 2. 메인 펫 표시
+        if self.pet:
+            self.pet.show()
+            self.pet.raise_()
+
     def open_home(self):
-        if self.pet: 
-            self.pet.hide() 
-            
+        if self.pet: self.pet.hide() 
         if self.home_window is None:
             self.home_window = HouseWindow(self.state, self.pet, self.windowIcon())
-            
-            # ✅ 기존 훅 대신, 여기서 직접 종료 시점의 데이터를 꽂아넣음
-            original_close = self.home_window.closeEvent
-            
-            def home_close_wrapper(event):
-                # 1. 닫히기 직전 집 펫의 수면 상태를 메인 펫에게 강제 이식
-                h_pet = self.home_window.house_pet
-                if h_pet and h_pet.sleeping:
-                    self.pet.sleeping = True
-                    self.pet.sleep_end_at = h_pet.sleep_end_at
-                    # 메인 펫이 나타나자마자 자는 모습이도록 모드 설정
-                    remain = max(0.1, h_pet.sleep_end_at - time.time())
-                    self.pet.set_mode("sleep", sec=remain)
-                
-                # 2. 기존 닫기 로직 수행
-                original_close(event)
-                
-                # 3. 메인 펫 부활
-                if self.pet:
-                    self.pet.show()
-                    self.pet.raise_()
-
-            self.home_window.closeEvent = home_close_wrapper
-            
-        self.home_window.show()
-        self.home_window.raise_()
-        self.home_window.activateWindow()
+            orig_close = self.home_window.closeEvent
+            def close_wrapper(e):
+                self._sync_and_show_main_pet(self.home_window)
+                orig_close(e)
+            self.home_window.closeEvent = close_wrapper
+        self.home_window.show(); self.home_window.raise_(); self.home_window.activateWindow()
 
     def open_job(self):
         if self.pet: self.pet.hide()
         if self.job_window is None:
             self.job_window = JobWindow(self.state, self.windowIcon())
-            self._hook_close_event(self.job_window)
+            orig_close = self.job_window.closeEvent
+            def close_wrapper(e):
+                self._sync_and_show_main_pet(self.job_window)
+                orig_close(e)
+            self.job_window.closeEvent = close_wrapper
         self.job_window.show(); self.job_window.raise_(); self.job_window.activateWindow()
 
     def open_study(self):
         if self.pet: self.pet.hide()
         if self.study_window is None:
             self.study_window = StudyWindow(self.state, self.windowIcon())
-            self._hook_close_event(self.study_window)
+            orig_close = self.study_window.closeEvent
+            def close_wrapper(e):
+                self._sync_and_show_main_pet(self.study_window)
+                orig_close(e)
+            self.study_window.closeEvent = close_wrapper
         self.study_window.show(); self.study_window.raise_(); self.study_window.activateWindow()
 
     def open_name_change(self):
