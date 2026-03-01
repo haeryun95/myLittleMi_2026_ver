@@ -262,7 +262,9 @@ class PetWindow(QWidget):
             self.press_pos = e.globalPosition().toPoint()
             self.drag_offset = self.press_pos - self.frameGeometry().topLeft()
             self.setCursor(Qt.ClosedHandCursor)
-            if self.drag_frames:
+            
+            # ✅ 수정: 자는 중이 아닐 때만 drag 모드로 변경
+            if not self.sleeping and self.drag_frames:
                 self.set_mode("drag", sec=99999)
             e.accept()
 
@@ -282,17 +284,30 @@ class PetWindow(QWidget):
             self.dragging = False
             self.setCursor(Qt.OpenHandCursor)
             self.ground_y = min(self.y(), self.screen_rect.bottom() - self.height())
-            if self.mode == "drag":
-                self.set_mode("normal", sec=99999)
+            
+            # ✅ 수정: 드래그 종료 후 상태 체크
+            if self.sleeping:
+                # 자는 중이면 다시 sleep 모드로 강제 복구
+                remain = max(0.1, self.sleep_end_at - time.time())
+                self.set_mode("sleep", sec=remain)
+            else:
+                # 안 자는 중이면 정상적으로 normal 복귀
+                if self.mode == "drag":
+                    self.set_mode("normal", sec=99999)
+            
             if not self.was_dragged:
                 self.on_pet_clicked()
             e.accept()
 
     def on_pet_clicked(self):
         if self.sleeping:
-            self.sleep_end_at = time.time() # 즉시 깨어남
-            self.say("앗! 누가 깨웠어 찍!", 1.5)
-            return    
+            self.start_shake(sec=0.3, strength=2)
+            self.say("음냐... 졸려... 더 잘래 찍...", 1.8)
+            # ✅ 말을 한 직후(혹은 동시에) 다시 sleep 모드로 고정
+            # 모드 유지 시간을 수면 종료 시간까지 넉넉하게 잡음
+            remaining_sleep = max(0.1, self.sleep_end_at - time.time())
+            self.set_mode("sleep", sec=remaining_sleep)
+            return
         self.start_shake(sec=0.35, strength=2)
         msg = random.choice(["헤헤…", "찍찍… 좋아!", "쓰담쓰담…", "기분 좋아…"])
         self.say(msg, 2.0)
@@ -316,12 +331,15 @@ class PetWindow(QWidget):
 
         if self.sleeping:
             if now >= self.sleep_end_at:
+                # 깨어나는 로직
                 self.sleeping = False
-                self.state.energy = max(self.state.energy, SLEEP_RECOVER_ENERGY)
-                self.state.mood = clamp(self.state.mood + 4)
-                self.say("찍! 좀 나아졌어…", 2.2)
+                # ... 
                 self.set_mode("normal", 99999)
             else:
+                # ✅ 핵심: 말하는 중(say_until)이 아닐 때 모드가 sleep이 아니면 즉시 복구
+                if self.mode != "sleep" and now > self.say_until:
+                    self.set_mode("sleep", sec=self.sleep_end_at - now)
+                
                 self.state.energy = clamp(self.state.energy + 0.15, 0, 100)
             return
 
