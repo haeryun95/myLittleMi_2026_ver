@@ -1,0 +1,162 @@
+* {
+    font-family: "온글잎 박다현체", "Malgun Gothic";
+    font-size: 16pt;
+    color: #3a2333;
+}
+
+/* 메인 프레임 */
+QWidget#WindowFrame {
+    background-color: transparent;
+    background-image: url("{window_frame}");
+    background-repeat: no-repeat;
+    background-position: center;
+}
+
+
+/* 타이틀바 배경 */
+QWidget#TitleBar {
+    background-color: transparent;
+    background-image: url("{titlebar_bg}");
+    background-repeat: no-repeat;
+    border: none;
+
+}
+
+/* 타이틀바 버튼 (btn_ic 배경 위에 16x16 아이콘 정중앙 배치) */
+QPushButton#SettingButton, QPushButton#MinButton, QPushButton#CloseButton {
+    background-color: transparent;
+    background-image: url("{btn_ic}"); 
+    background-repeat: no-repeat;
+    background-position: center;
+    border: none;
+    width: 32px;
+    height: 32px;
+    padding: 0px; /* ✅ 확대 방지 */
+}
+
+QPushButton#SettingButton { qproperty-icon: url("{ic_setting}"); qproperty-iconSize: 16px 16px; }
+QPushButton#MinButton { qproperty-icon: url("{ic_min}"); qproperty-iconSize: 16px 16px; }
+QPushButton#CloseButton { qproperty-icon: url("{ic_close}"); qproperty-iconSize: 16px 16px; }
+QPushButton#CloseButton:hover { qproperty-icon: url("{btn_close_hover}"); }
+
+/* 헤더와 채팅창 */
+QWidget#PanelHeader {
+    background-color: transparent;
+    background-image: url("{panel_header}");
+    background-repeat: no-repeat;
+    background-position: center;
+}
+
+QPushButton#HeaderIconButton {
+    background: transparent;
+    border: none;
+    padding: 0px; /* ✅ 확대 방지 */
+}
+
+QTextEdit#ChatLog {
+    background-color: rgba(0, 0, 0, 0);
+    background-image: url("{panel_chat}");
+    background-repeat: no-repeat;
+    background-position: center;
+    border: none;
+    padding: 12px;
+    color: {text_color};
+}
+
+/* 상태바 행 (352x40) */
+QWidget#StatusRow {
+    background-color: transparent;
+    background-image: url("{panel_status}");
+    background-repeat: no-repeat;
+    background-position: center;
+}
+
+/* 바 트랙 (246x28) */
+QLabel#BarTrack {
+    background-color: transparent;
+    background-image: url("{bar_track}");
+    background-repeat: no-repeat;
+    background-position: center;
+}
+
+/* 게이지 이미지 */
+QLabel#GaugeFun, QLabel#GaugeMood, QLabel#GaugeHunger, QLabel#GaugeEnergy {
+    background-repeat: no-repeat;
+    background-position: left center;
+}
+QLabel#GaugeFun { background-image: url("{bar_track_fun}"); }
+QLabel#GaugeMood { background-image: url("{bar_track_mood}"); }
+QLabel#GaugeHunger { background-image: url("{bar_track_hunger}"); }
+QLabel#GaugeEnergy { background-image: url("{bar_track_energy}"); }
+
+/* 하단 메뉴 버튼 (110x45) */
+QPushButton#MenuButton {
+    background-color: transparent;
+    background-image: url("{btn_m}");
+    background-repeat: no-repeat;
+    background-position: center;
+    border: none;
+    color: {text_color};
+    font-weight: 800;
+    margin-bottom:4px;
+}
+/* ✅ 버튼을 눌렀을 때 (클릭 중인 상태) */
+QPushButton#MenuButton:pressed {
+    background-image: url("{btn_m_press}");
+    padding-top: 2px; /* 살짝 아래로 눌리는 느낌 추가 */
+    padding-left: 2px;
+}
+
+QLabel#TitleLabel, QLabel#MoneyLabel, QLabel#NameLabel, QLabel#MoodLabel {
+    background: transparent;
+    font-weight: 800;
+    color: {text_color};
+}
+QPushButton#SettingButton, QPushButton#MinButton, QPushButton#CloseButton {
+    background-color: transparent;
+    background-image: url("{btn_ic}"); 
+    background-repeat: no-repeat;
+    background-position: center;
+    border: none;
+    width: 32px;
+    height: 32px;
+}
+
+/* ✅ 아이콘 사이즈를 14px로 줄여서 btn_ic의 테두리가 보이게 함 */
+QPushButton#SettingButton { qproperty-icon: url("{ic_setting}"); qproperty-iconSize: 22px 22px; }
+QPushButton#MinButton { qproperty-icon: url("{ic_min}"); qproperty-iconSize: 22px 22px; }
+QPushButton#CloseButton { qproperty-icon: url("{ic_close}"); qproperty-iconSize: 22px 22px; }
+
+QLabel#TitleLabel, QLabel#MoneyLabel, QLabel#NameLabel, QLabel#MoodLabel, QLabel#StatusNameLabel {
+    background: transparent;
+    font-weight: 800;
+    color: {text_color};
+}
+
+/* 채팅로그 영역 여백 설정 */
+QTextEdit#ChatLog {
+    background-color: transparent;
+    background-image: url("{panel_chat}");
+    background-repeat: no-repeat;
+    background-position: center;
+    border: none;
+    padding: 15px 15px 30px 15px; /* ✅ 하단 여백을 넓혀 텍스트 겹침 완벽 차단 */
+    color: {text_color};
+}
+/* 채팅로그 영역 (하단 및 우측 여백을 줘서 스크롤바와 겹침 방지) */
+QTextEdit#ChatLog {
+    background-color: transparent;
+    background-image: url("{panel_chat}");
+    background-repeat: no-repeat;
+    background-position: center;
+    border: none;
+    padding: 12px 25px 30px 12px; /* ✅ 우측/하단 여백 확보 */
+    color: {text_color};
+}
+
+/* 메뉴 버튼 눌림 효과 (이 부분이 있어야 btn_m_press가 작동함) */
+QPushButton#MenuButton:pressed {
+    background-image: url("{btn_m_press}");
+    padding-top: 2px;
+    padding-left: 2px;
+}

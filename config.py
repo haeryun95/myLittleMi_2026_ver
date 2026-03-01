@@ -21,7 +21,7 @@ BUBBLE_PATH = ASSET_DIR / "speach_bubble.png"
 app_icon_PATH = ASSET_DIR / "app.ico"
 
 # 아이콘 디렉터리
-app_icon_DIR = ASSET_DIR / "app_icon"
+app_icon_DIR = ASSET_DIR / "ui"/"icon"
 
 # 배경/가구
 BG_DIR = ASSET_DIR / "background"
