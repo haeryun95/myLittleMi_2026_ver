@@ -125,6 +125,7 @@ class HousePetWidget(QWidget):
         pw = self.parent().width() if self.parent() else 300
         self.move(random.randint(20, max(20, pw - self.width() - 20)), self.ground_y)
         self.say("찍! 집이다 🏠", duration=2.2)
+        self.show()
 
     def get_available_faces(self) -> List[str]:
         return list(self.emotion_map.keys())
@@ -325,6 +326,74 @@ class HousePetWidget(QWidget):
         except Exception as ex:
             chat_log.append(f"[오류] 집펫 AI 처리 실패: {ex}")
 
+    # ✅ ControlPanel 말풍선 연동용 브릿지 (HousePetWidget 안에 위치)
+    def show_bubble(self, text: str, bubble_sec: float = 2.2):
+        self.say(text, duration=bubble_sec)
+
+    # ✅ 펫 캐릭터를 그려주는 핵심 역할 (HousePetWidget 안에 위치)
+    def paintEvent(self, e):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+
+        # 1. 프레임 선택
+        if self.mode == "drag" and self.drag_frames:
+            pix = (self.drag_frames_flipped[self.frame_i] if self.vx < 0 and self.drag_frames_flipped else self.drag_frames[self.frame_i])
+        elif self.mode == "walk" and self.walk_frames:
+            pix = (self.walk_frames_flipped[self.frame_i] if self.vx < 0 and self.walk_frames_flipped else self.walk_frames[self.frame_i])
+        elif self.mode == "sleep" and self.sleep_frames:
+            pix = self.sleep_frames[self.frame_i]
+        elif self.mode == "speak" and self.speak_frames:
+            pix = self.speak_frames[self.frame_i]
+        elif self.mode == "eat" and self.eat_frames:
+            pix = self.eat_frames[self.frame_i % len(self.eat_frames)]
+        else:
+            pix = self.emotion_map.get(self.current_face) or next(iter(self.emotion_map.values()))
+
+        # 2. 흔들림 효과
+        dx = dy = 0
+        if time.time() < self.shake_until and self.shake_strength > 0:
+            dx = random.randint(-self.shake_strength, self.shake_strength)
+            dy = random.randint(-self.shake_strength, self.shake_strength)
+
+        # 3. 펫 렌더링
+        if pix and not pix.isNull():
+            painter.drawPixmap(dx, dy + self.char_y, pix)
+
+        # 4. 말풍선 렌더링
+        if self.say_text and time.time() > self.say_until:
+            self.say_text = ""
+
+        if self.say_text:
+            painter.setFont(QFont("온글잎 박다현체", 14))
+            bubble_w = self.bubble.width() if self.bubble else int(180 * HOUSE_SCALE_CHAR)
+            bubble_h = self.bubble.height() if self.bubble else int(50 * HOUSE_SCALE_CHAR)
+
+            head_x = self.width() // 2
+            head_y = self.char_y + int(pix.height() * 0.4)
+            gap = int(2 * HOUSE_SCALE_CHAR)
+            
+            bx = max(0, min(self.width() - bubble_w, head_x - bubble_w // 2))
+            by = max(0, head_y - bubble_h - gap)
+            bubble_rect = QRect(bx, by, bubble_w, bubble_h)
+
+            if self.bubble:
+                painter.drawPixmap(bx, by, self.bubble)
+            else:
+                painter.setOpacity(0.88)
+                painter.setBrush(Qt.white)
+                painter.setPen(Qt.NoPen)
+                painter.drawRoundedRect(bubble_rect, 10, 10)
+                painter.setOpacity(1.0)
+
+            try:
+                l, t, r, b = HOUSE_BUBBLE_PADDING
+            except NameError:
+                l, t, r, b = (10, 10, 10, 10)
+                
+            text_rect = bubble_rect.adjusted(l, t, -r, -b)
+            painter.setPen(Qt.black)
+            painter.drawText(text_rect, Qt.AlignCenter | Qt.TextWordWrap, self.say_text)
+
 
 class HouseWindow(QWidget):
     def __init__(self, state: PetState, desktop_pet, app_icon: Optional[QIcon] = None):
@@ -382,6 +451,12 @@ class HouseWindow(QWidget):
             self.pet.hide()
         except Exception:
             pass
+        
+        # 펫이 확실히 위에 그려지도록 강제
+        if hasattr(self, 'house_pet') and self.house_pet:
+            self.house_pet.show()
+            self.house_pet.raise_()
+            
         super().showEvent(e)
 
     def open_furniture_shop(self):
@@ -453,6 +528,7 @@ class HouseWindow(QWidget):
             pass
         super().closeEvent(e)
 
+    # ✅ 집 배경과 가구를 그려주는 역할 (HouseWindow 안에 위치)
     def paintEvent(self, e):
         painter = QPainter(self)
 
