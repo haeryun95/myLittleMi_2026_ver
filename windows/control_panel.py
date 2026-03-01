@@ -149,6 +149,7 @@ class ControlPanel(QWidget):
         
         h_lay.addWidget(self.mood_label); h_lay.addWidget(self.theme_btn)
         self.root.addWidget(self.header_widget)
+        self.root.addSpacing(8)
 
         # ✅ 스크롤바 유지 및 채팅로그
         self.chat_log = QTextEdit()
@@ -183,24 +184,35 @@ class ControlPanel(QWidget):
             st_btn = QPushButton(); st_btn.setObjectName("HeaderIconButton")
             st_btn.setFixedSize(28, 28)
             kr_lbl = QLabel(kr_name); kr_lbl.setObjectName("StatusNameLabel")
+            
+            # 게이지 트랙 및 채워지는 바
             track_lbl = QLabel(); track_lbl.setObjectName("BarTrack"); track_lbl.setFixedSize(246, 28)
             gauge_lbl = QLabel(track_lbl); gauge_lbl.setObjectName(obj_name); gauge_lbl.setFixedSize(0, 28)
+            
+            # ✅ 현재 스탯 수치 표시용 라벨 (트랙 위에 오버레이)
+            val_lbl = QLabel(track_lbl)
+            val_lbl.setFixedSize(246, 28)
+            val_lbl.setAlignment(Qt.AlignCenter)
+            val_lbl.setStyleSheet("color: white; font-weight: bold; font-size: 12px; background: transparent;")
 
             row_lay.addWidget(st_btn); row_lay.addWidget(kr_lbl)
             row_lay.addStretch(1); row_lay.addWidget(track_lbl)
             status_vbox.addWidget(row_widget, 0, Qt.AlignCenter)
-            self.status_rows[key] = (gauge_lbl, st_btn, icon_name) 
+            
+            # 상태 관리에 val_lbl 추가 (인덱스 3)
+            self.status_rows[key] = (gauge_lbl, st_btn, icon_name, val_lbl)
 
         self.root.addWidget(self.status_container)
+        self.root.addSpacing(12)
 
         self.btn_widgets = [] 
         btn_container = QWidget(); btn_container.setFixedWidth(352)
         btn_grid = QGridLayout(btn_container)
-        btn_grid.setContentsMargins(4, 0, 4, 0); btn_grid.setSpacing(4)
+        btn_grid.setContentsMargins(2, 0, 2, 0); btn_grid.setSpacing(4)
         
         self.actions_info = [
             ("밥주기", "feed.png", self.feed_pet), ("대화", "pet.png", self.pet_pet),
-            ("놀아주기", "play.png", self.play_pet), ("집", "home.png", self.open_home),
+            ("놀기", "play.png", self.play_pet), ("집", "home.png", self.open_home),
             ("알바", "job.png", self.open_job), ("공부", "study.png", self.open_study)
         ]
         
@@ -211,6 +223,14 @@ class ControlPanel(QWidget):
             self.btn_widgets.append((btn, img))
             
         self.root.addWidget(btn_container, 0, Qt.AlignCenter)
+
+        self.root.addStretch(1)
+
+        # ✅ 하단 ESC 안내문 추가 (가운데 정렬, 옅은 회색)
+        self.guide_label = QLabel("ESC = 패널 닫기")
+        self.guide_label.setAlignment(Qt.AlignCenter)
+        self.guide_label.setStyleSheet("color: #fff; font-size: 16px; font-weight: bold; margin-bottom: 2px;")
+        self.root.addWidget(self.guide_label)
 
         for btn in self.findChildren(QPushButton):
             btn.setCursor(Qt.PointingHandCursor)
@@ -257,8 +277,9 @@ class ControlPanel(QWidget):
         for btn, path in [(self.rename_btn, ICON_DIR / "ic_rename.png"), (self.theme_btn, ICON_DIR / "ic_theme.png")]:
             if path.exists(): btn.setIcon(QIcon(str(path.resolve()))); btn.setIconSize(QSize(28, 28))
 
+        # ✅ 여기서 4개의 값을 받도록 수정 (val_lbl 추가)
         for key in self.status_rows:
-            gauge, btn, img_name = self.status_rows[key]
+            gauge, btn, img_name, val_lbl = self.status_rows[key]
             path = ICON_DIR / img_name
             if path.exists(): btn.setIcon(QIcon(str(path.resolve()))); btn.setIconSize(QSize(28, 28))
 
@@ -267,13 +288,21 @@ class ControlPanel(QWidget):
             if path.exists(): btn.setIcon(QIcon(str(path.resolve()))); btn.setIconSize(QSize(28, 28))
 
     def _sync_ui(self):
-        self.money_label.setText(str(int(self.state.money))); self.name_label.setText(self.state.pet_name)
+        self.money_label.setText(str(int(self.state.money)))
+        self.name_label.setText(self.state.pet_name)
         self.mood_label.setText(self.state.mood_label)
         max_w = 246
+        
         for k, row_data in self.status_rows.items():
             gauge = row_data[0]
+            val_lbl = row_data[3]  # ✅ 텍스트 라벨 추출
             val = getattr(self.state, k)
+            
+            # 게이지 바 길이 업데이트
             gauge.setFixedWidth(int((val / 100) * max_w))
+            # 텍스트 수치 업데이트
+            val_lbl.setText(f"{int(val)} / 100")
+            
         self.titlebar.title_label.setText(f"{self.state.pet_name} - 메인 화면")
 
     def open_settings(self): pass
@@ -305,7 +334,7 @@ class ControlPanel(QWidget):
 
     def _format_stat(self, stat_name: str, change_val: int) -> str:
         """폰트 크기를 11px(또는 9pt)로 강제 축소하여 시각적 안정감 부여"""
-        f_style = "font-size:11px; font-weight:bold;" 
+        f_style = "font-size:16px; font-weight:bold;" 
         if change_val > 0:
             return f"<span style='color:#FF5E5E; {f_style}'>▲ {stat_name} {change_val}</span>"
         elif change_val < 0:
@@ -313,18 +342,22 @@ class ControlPanel(QWidget):
         return ""
 
     def _delayed_pet_response(self, target, pet_msg, stats_html, anim_callback):
-        log_html = (
-            f"<b>{self.state.pet_name}</b> : {pet_msg}<br>"
-            f"&nbsp;&nbsp;{stats_html}<br>"
+        # ✅ HTML <table> 구조를 사용하여 중앙 정렬을 완벽하게 격리 (정렬 전염 방지)
+        stat_box = (
+            f"<table width='100%' cellpadding='0' cellspacing='4'><tr><td align='center'>"
+            f"<span style='background-color: rgba(255, 160, 209, 0.15);padding: 10px 20px;'>"
+            f"{stats_html}</span>"
+            f"</td></tr></table>"
         )
+        
+        log_html = f"<b>{self.state.pet_name}</b> : {pet_msg}{stat_box}"
+        
         self.chat_log.append(log_html)
         self.chat_log.verticalScrollBar().setValue(self.chat_log.verticalScrollBar().maximum())
         
-        # 애니메이션 실행
         if anim_callback: 
             anim_callback()
             
-        # 하위 창 펫 객체의 isHidden() 오작동을 피하기 위해 target 유무만 검증
         if target:
             trigger_pet_action_bubble(target, self.chat_log, [pet_msg])
 
@@ -332,6 +365,7 @@ class ControlPanel(QWidget):
         target = self._active_pet_for_chat()
         
         self.user_name = "고요"
+        # ✅ 테이블 격리로 인해 이전 줄의 중앙 정렬이 전염되지 않으므로 정상적으로 왼쪽 정렬됨
         self.chat_log.append(f"<span style='color:#aaaaaa;'><b>{self.user_name}</b> : {user_action_msg}</span>")
         self.chat_log.verticalScrollBar().setValue(self.chat_log.verticalScrollBar().maximum())
 
@@ -381,7 +415,7 @@ class ControlPanel(QWidget):
             self.state.mood = clamp(self.state.mood + inc_mood)
             self.state.fun = clamp(self.state.fun + inc_fun)
             
-            msg = random.choice(["헤헤 기분 좋아 💗", "더 쓰다듬어줘!", "따뜻해..."])
+            msg = random.choice(["헤헤 기분 좋아 💗", "쫑알쫑알!", "따뜻해..."])
             stats_html = f"{self._format_stat('기분', inc_mood)} &nbsp;&nbsp; {self._format_stat('재미', inc_fun)}"
             
             def anim():
@@ -390,7 +424,7 @@ class ControlPanel(QWidget):
                 
             self._delayed_pet_response(target, msg, stats_html, anim)
             
-        self.handle_interaction("💗 쓰다듬었다!", normal_logic)
+        self.handle_interaction("💗 대화를 나누었다!", normal_logic)
 
     def play_pet(self):
         def normal_logic(target):
@@ -429,20 +463,35 @@ class ControlPanel(QWidget):
             self.move(self.x() + delta.x(), self.y() + delta.y())
             self._old_pos = e.globalPosition().toPoint()
 
+    # ✅ ESC 키를 누르면 패널이 트레이로 숨겨지도록(최소화) 설정
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Escape:
+            self.minimize_to_tray()
+        else:
+            super().keyPressEvent(event)
     # -------------------------
     # 창 관리 및 펫 복구 로직
     # -------------------------
     def _hook_close_event(self, window):
         original_close = window.closeEvent
+        
         def closeEvent(event):
-            if self.pet: self.pet.show()
             original_close(event)
+            other_windows_open = False
+            for w in [self.home_window, self.job_window, self.study_window]:
+                if w and w != window and w.isVisible():
+                    other_windows_open = True
+                    break
+            
+            if not other_windows_open and self.pet:
+                self.pet.show()
+                
         window.closeEvent = closeEvent
 
     def open_home(self):
         if self.pet: self.pet.hide() 
         if self.home_window is None:
-            self.home_window = HouseWindow(self.state, self.windowIcon())
+            self.home_window = HouseWindow(self.state, self.pet, self.windowIcon())
             self._hook_close_event(self.home_window)
         self.home_window.show(); self.home_window.raise_(); self.home_window.activateWindow()
 
@@ -459,14 +508,6 @@ class ControlPanel(QWidget):
             self.study_window = StudyWindow(self.state, self.windowIcon())
             self._hook_close_event(self.study_window)
         self.study_window.show(); self.study_window.raise_(); self.study_window.activateWindow()
-
-    def open_home(self):
-        if self.pet: self.pet.hide() 
-        if self.home_window is None:
-            # ✅ 두 번째 인자로 self.pet 추가
-            self.home_window = HouseWindow(self.state, self.pet, self.windowIcon())
-            self._hook_close_event(self.home_window)
-        self.home_window.show(); self.home_window.raise_(); self.home_window.activateWindow()
 
     def open_name_change(self):
         if self.name_window is None:
