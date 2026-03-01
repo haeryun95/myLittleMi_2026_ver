@@ -150,7 +150,7 @@ class ControlPanel(QWidget):
         h_lay.addWidget(self.mood_label); h_lay.addWidget(self.theme_btn)
         self.root.addWidget(self.header_widget)
 
-        # ✅ 채팅로그 (스크롤바 정책 원복)
+        # ✅ 스크롤바 유지 및 채팅로그
         self.chat_log = QTextEdit()
         self.chat_log.setReadOnly(True); self.chat_log.setObjectName("ChatLog")
         self.chat_log.setFixedHeight(203)
@@ -199,7 +199,7 @@ class ControlPanel(QWidget):
         btn_grid.setContentsMargins(4, 0, 4, 0); btn_grid.setSpacing(4)
         
         self.actions_info = [
-            ("밥주기", "feed.png", self.feed_pet), ("대화하기", "pet.png", self.pet_pet),
+            ("밥주기", "feed.png", self.feed_pet), ("대화", "pet.png", self.pet_pet),
             ("놀아주기", "play.png", self.play_pet), ("집", "home.png", self.open_home),
             ("알바", "job.png", self.open_job), ("공부", "study.png", self.open_study)
         ]
@@ -231,7 +231,7 @@ class ControlPanel(QWidget):
             "panel_header": _p(tp / "panel_header.png"), "panel_status": _p(tp / "panel_status.png"),
             "panel_chat": _p(tp / "panel_chat.png"), 
             "btn_m": _p(tp / "btn_m.png"), 
-            "btn_m_press": _p(tp / "btn_m_press.png"), # ✅ 버튼 클릭 반응 매핑
+            "btn_m_press": _p(tp / "btn_m_press.png"), 
             "btn_ic": _p(tp / "btn_ic.png"), "ic_setting": _p(ICON_DIR / "ic_setting.png"), 
             "ic_min": _p(ICON_DIR / "ic_min.png"), "ic_close": _p(ICON_DIR / "ic_close.png"), 
             "btn_close_hover": _p(tp / "btn_close_hover.png"), "bar_track": _p(tp / "bar_track.png"),
@@ -285,88 +285,141 @@ class ControlPanel(QWidget):
         m = QMenu(); m.addAction("열기", lambda: (self.show(), self.raise_())); m.addAction("종료", self.quit_app)
         self.tray.setContextMenu(m); self.tray.show()
     def toggle_theme(self): self.apply_theme("dark" if self.theme == "pink" else "pink")
-    def _active_pet(self): return self.pet
 
-    # ✅ 대화 포맷팅 전용 메서드
-    def log_interaction(self, action_name: str, pet_reply: str, stat_change: str):
-        self.chat_log.append(f"{self.user_name} : {action_name}")
-        self.chat_log.append(f"{self.state.pet_name} : {pet_reply} ({stat_change})\n")
-        # 스크롤 자동 하단 이동
-        self.chat_log.verticalScrollBar().setValue(self.chat_log.verticalScrollBar().maximum())
 
-    # ✅ 펫 상호작용 및 애니메이션 복구
+    # ----------------------------------------------------
+    # ✅ 펫 상호작용 코어 로직 (폰트 축소 및 하위 창 반응 보장)
+    # ----------------------------------------------------
     def _active_pet_for_chat(self):
-        """현재 화면에 활성화된(보이는) 펫 객체를 반환"""
-        if self.home_window and self.home_window.isVisible() and hasattr(self.home_window, 'pet'):
-            return self.home_window.pet
+        """현재 화면에 떠 있는 창의 실제 펫 추적 (하우스 펫 변수명 오류 수정)"""
+        # ✅ 집 창이 열려있으면 'house_pet'을 타겟으로 잡음
+        if self.home_window and self.home_window.isVisible() and hasattr(self.home_window, 'house_pet'):
+            return self.home_window.house_pet
+            
         if self.job_window and self.job_window.isVisible() and hasattr(self.job_window, 'pet'):
             return self.job_window.pet
         if self.study_window and self.study_window.isVisible() and hasattr(self.study_window, 'pet'):
             return self.study_window.pet
+            
         return self.pet
 
-    def log_interaction(self, action_msg: str, pet_reply: str, stat_change: str):
-        """대화 포맷 적용 및 스크롤바 자동 하단 이동"""
-        self.chat_log.append(f"나 : {action_msg}")
-        self.chat_log.append(f"{self.state.pet_name} : {pet_reply} ({stat_change})\n")
+    def _format_stat(self, stat_name: str, change_val: int) -> str:
+        """폰트 크기를 11px(또는 9pt)로 강제 축소하여 시각적 안정감 부여"""
+        f_style = "font-size:11px; font-weight:bold;" 
+        if change_val > 0:
+            return f"<span style='color:#FF5E5E; {f_style}'>▲ {stat_name} {change_val}</span>"
+        elif change_val < 0:
+            return f"<span style='color:#4A90E2; {f_style}'>▼ {stat_name} {abs(change_val)}</span>"
+        return ""
+
+    def _delayed_pet_response(self, target, pet_msg, stats_html, anim_callback):
+        log_html = (
+            f"<b>{self.state.pet_name}</b> : {pet_msg}<br>"
+            f"&nbsp;&nbsp;{stats_html}<br>"
+        )
+        self.chat_log.append(log_html)
+        self.chat_log.verticalScrollBar().setValue(self.chat_log.verticalScrollBar().maximum())
+        
+        # 애니메이션 실행
+        if anim_callback: 
+            anim_callback()
+            
+        # 하위 창 펫 객체의 isHidden() 오작동을 피하기 위해 target 유무만 검증
+        if target:
+            trigger_pet_action_bubble(target, self.chat_log, [pet_msg])
+
+    def handle_interaction(self, user_action_msg, normal_logic):
+        target = self._active_pet_for_chat()
+        
+        self.user_name = "고요"
+        self.chat_log.append(f"<span style='color:#aaaaaa;'><b>{self.user_name}</b> : {user_action_msg}</span>")
         self.chat_log.verticalScrollBar().setValue(self.chat_log.verticalScrollBar().maximum())
 
+        is_sleeping = getattr(target, "is_sleeping", False) or self.state.energy < 4
+
+        def response():
+            if is_sleeping:
+                dec_mood = -random.randint(1, 20)
+                self.state.mood = clamp(self.state.mood + dec_mood)
+                msg = random.choice(["음냐... 피곤해...", "아 왜 깨워...", "ZZZ... 안 놀아..."])
+                stats_html = self._format_stat('기분', dec_mood)
+                
+                def sleep_anim():
+                    if hasattr(target, "start_shake"): target.start_shake(sec=0.5, strength=3)
+                    if hasattr(target, "start_sleep_for_60s"):
+                        QTimer.singleShot(600, target.start_sleep_for_60s)
+                
+                self._delayed_pet_response(target, msg, stats_html, sleep_anim)
+            else:
+                normal_logic(target)
+
+        QTimer.singleShot(500, response)
+
     def feed_pet(self):
-        self.state.hunger = clamp(self.state.hunger + 12)
-        self.state.mood = clamp(self.state.mood + 1)
-        
-        msg = random.choice(["냠냠! 맛있어!", "배부르다 찍!", "밥 최고!"])
-        self.log_interaction("🍚 밥을 줬다!", msg, "포만감 +12, 기분 +1")
-
-        target = self._active_pet_for_chat()
-        if hasattr(target, "trigger_eat_visual"):
-            target.trigger_eat_visual()
-
-        if target and not target.isHidden():
-            trigger_pet_action_bubble(target, self.chat_log, [msg])
+        def normal_logic(target):
+            inc_hunger = random.randint(1, 20)
+            inc_mood = random.randint(1, 10)
+            self.state.hunger = clamp(self.state.hunger + inc_hunger)
+            self.state.mood = clamp(self.state.mood + inc_mood)
+            
+            msg = random.choice(["냠냠! 맛있어!", "배부르다 찍!", "밥 최고!"])
+            stats_html = f"{self._format_stat('포만감', inc_hunger)} &nbsp;&nbsp; {self._format_stat('기분', inc_mood)}"
+            
+            def anim():
+                # 집 창 펫 객체 모델 호환을 위해 hasattr 다중 체크
+                if hasattr(target, "trigger_eat_visual"): target.trigger_eat_visual()
+                elif hasattr(target, "set_action"): target.set_action("eat")
+                
+            self._delayed_pet_response(target, msg, stats_html, anim)
+            
+        self.handle_interaction("🍚 밥을 줬다!", normal_logic)
 
     def pet_pet(self):
-        self.state.mood = clamp(self.state.mood + 3)
-        self.state.fun = clamp(self.state.fun + 1)
-        
-        msg = random.choice(["헤헤 기분 좋아 💗", "쫑알쫑알!", "따뜻해..."])
-        self.log_interaction("💗 대화했다!", msg, "기분 +3, 재미 +1")
-
-        target = self._active_pet_for_chat()
-        if hasattr(target, "start_shake"):
-            target.start_shake(sec=0.4, strength=2)
-
-        if target and not target.isHidden():
-            trigger_pet_action_bubble(target, self.chat_log, [msg])
+        def normal_logic(target):
+            inc_mood = random.randint(1, 20)
+            inc_fun = random.randint(1, 20)
+            self.state.mood = clamp(self.state.mood + inc_mood)
+            self.state.fun = clamp(self.state.fun + inc_fun)
+            
+            msg = random.choice(["헤헤 기분 좋아 💗", "더 쓰다듬어줘!", "따뜻해..."])
+            stats_html = f"{self._format_stat('기분', inc_mood)} &nbsp;&nbsp; {self._format_stat('재미', inc_fun)}"
+            
+            def anim():
+                if hasattr(target, "start_shake"): target.start_shake(sec=0.4, strength=2)
+                elif hasattr(target, "set_action"): target.set_action("jump")
+                
+            self._delayed_pet_response(target, msg, stats_html, anim)
+            
+        self.handle_interaction("💗 쓰다듬었다!", normal_logic)
 
     def play_pet(self):
-        target = self._active_pet_for_chat()
-
-        # 에너지 부족 시 예외 처리
-        if self.state.energy < 4:
-            msg = random.choice(["너무 졸려... 나중에 놀자...", "힘들어 헉헉..."])
-            self.log_interaction("🎮 놀아주려 했다...", msg, "에너지 부족")
-
-            if hasattr(target, "start_sleep_for_60s"):
-                target.start_sleep_for_60s()
-
-            if target and not target.isHidden():
-                trigger_pet_action_bubble(target, self.chat_log, [msg])
-            return
-
-        # 정상 상호작용
-        self.state.energy = clamp(self.state.energy - 4, 0.0, 100.0) # max_energy 대신 안전하게 100.0 (또는 self.state.max_energy 유지)
-        self.state.fun = clamp(self.state.fun + 6)
-        self.state.mood = clamp(self.state.mood + 1)
-        
-        msg = random.choice(["야호! 재밌다!", "우다다다!", "한 번 더 놀자!"])
-        self.log_interaction("🎮 같이 놀았다!", msg, "에너지 -4, 재미 +6, 기분 +1")
-
-        if hasattr(target, "do_jump"):
-            target.do_jump(strength=14)
-
-        if target and not target.isHidden():
-            trigger_pet_action_bubble(target, self.chat_log, [msg])
+        def normal_logic(target):
+            dec_energy = -random.randint(1, 20)
+            inc_fun = random.randint(1, 20)
+            inc_mood = random.randint(1, 20)
+            
+            max_e = getattr(self.state, 'max_energy', 100.0)
+            self.state.energy = clamp(self.state.energy + dec_energy, 0.0, max_e)
+            self.state.fun = clamp(self.state.fun + inc_fun)
+            self.state.mood = clamp(self.state.mood + inc_mood)
+            
+            msg = random.choice(["야호! 재밌다!", "우다다다!", "한 번 더 놀자!"])
+            stats_html = (
+                f"{self._format_stat('에너지', dec_energy)} &nbsp;&nbsp; "
+                f"{self._format_stat('재미', inc_fun)} &nbsp;&nbsp; "
+                f"{self._format_stat('기분', inc_mood)}"
+            )
+            
+            def anim():
+                if hasattr(target, "do_jump"): target.do_jump(strength=14)
+                elif hasattr(target, "set_action"): target.set_action("play")
+                
+                if self.state.energy < 4 and hasattr(target, "start_sleep_for_60s"):
+                    QTimer.singleShot(1000, target.start_sleep_for_60s)
+                    
+            self._delayed_pet_response(target, msg, stats_html, anim)
+            
+        self.handle_interaction("🎮 같이 놀았다!", normal_logic)
 
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton: self._old_pos = e.globalPosition().toPoint()
@@ -376,7 +429,9 @@ class ControlPanel(QWidget):
             self.move(self.x() + delta.x(), self.y() + delta.y())
             self._old_pos = e.globalPosition().toPoint()
 
-    # 창 종료 시 펫 복귀 훅
+    # -------------------------
+    # 창 관리 및 펫 복구 로직
+    # -------------------------
     def _hook_close_event(self, window):
         original_close = window.closeEvent
         def closeEvent(event):
@@ -404,6 +459,14 @@ class ControlPanel(QWidget):
             self.study_window = StudyWindow(self.state, self.windowIcon())
             self._hook_close_event(self.study_window)
         self.study_window.show(); self.study_window.raise_(); self.study_window.activateWindow()
+
+    def open_home(self):
+        if self.pet: self.pet.hide() 
+        if self.home_window is None:
+            # ✅ 두 번째 인자로 self.pet 추가
+            self.home_window = HouseWindow(self.state, self.pet, self.windowIcon())
+            self._hook_close_event(self.home_window)
+        self.home_window.show(); self.home_window.raise_(); self.home_window.activateWindow()
 
     def open_name_change(self):
         if self.name_window is None:
