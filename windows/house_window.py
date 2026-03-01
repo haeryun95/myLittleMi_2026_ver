@@ -241,13 +241,12 @@ class HousePetWidget(QWidget):
             self.move(int(x), int(y))
 
         self.update()
-        
+
     #집 상호작용 
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton:
             self.dragging = True
             self.was_dragged = False
-            # 화면 전체 기준 클릭 좌표와, 부모 창 기준 현재 위젯 위치를 각각 저장
             self.global_press_pos = e.globalPosition().toPoint()
             self.start_pos = self.pos()
             
@@ -264,14 +263,20 @@ class HousePetWidget(QWidget):
             if delta.manhattanLength() > 4:
                 self.was_dragged = True
 
-            # 원래 위치에서 마우스 이동량만큼만 이동 (클릭한 곳을 정확히 유지)
             target = self.start_pos + delta
 
-            # house boundary clamp (집 밖으로 못 나가게)
             parent = self.parent()
             if parent:
-                target.setX(max(0, min(parent.width() - self.width(), target.x())))
-                target.setY(max(0, min(parent.height() - self.height(), target.y())))
+                # ✅ 투명 말풍선 공간만큼 위로(-Y) 올라갈 수 있게 허용
+                min_y = -self.bubble_h
+                max_y = parent.height() - (self.height() // 3)
+                
+                # ✅ 좌우 벽도 반쯤 통과 가능하도록 여유 줌
+                min_x = -(self.width() // 2)
+                max_x = parent.width() - (self.width() // 2)
+
+                target.setX(max(min_x, min(max_x, target.x())))
+                target.setY(max(min_y, min(max_y, target.y())))
 
             self.move(target)
             e.accept()
