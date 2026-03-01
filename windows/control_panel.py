@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import Qt, QSize, QTimer, QPoint
-from PySide6.QtGui import QIcon, QAction
+from PySide6.QtGui import QIcon, QAction, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QGridLayout,
@@ -73,11 +73,10 @@ class TitleBar(QWidget):
         self.setObjectName("TitleBar")
         self.setFixedHeight(48)
         
-        # ✅ QSS 배경 이미지(border-image)를 그리기 위해 반드시 필요한 설정
         self.setAttribute(Qt.WA_StyledBackground, True)
 
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(12, 8, 12, 8)
+        lay.setContentsMargins(16, 0, 16, 0)
         lay.setSpacing(8)
 
         self.title_label = QLabel("라이미 - Panel")
@@ -133,7 +132,6 @@ class ControlPanel(QWidget):
         self.pet = pet
         self.theme = default_theme if default_theme in ("pink", "dark") else "pink"
 
-        # ✅ 마지막 서브 윈도우(집 등)가 닫힐 때 앱이 자동 종료되는 현상 방지
         QApplication.instance().setQuitOnLastWindowClosed(False)
 
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
@@ -148,7 +146,6 @@ class ControlPanel(QWidget):
         self.tray: Optional[QSystemTrayIcon] = None
         self._init_tray(app_icon)
 
-        # 전체 바깥 레이아웃
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
@@ -158,29 +155,35 @@ class ControlPanel(QWidget):
         self.frame.setAttribute(Qt.WA_StyledBackground, True)
         outer.addWidget(self.frame)
 
-        # ✅ 타이틀 바를 맨 위에 고정하기 위해 레이아웃 분리
         frame_lay = QVBoxLayout(self.frame)
-        frame_lay.setContentsMargins(24, 24, 24, 24)  # 그림자(inset) 영역
+        frame_lay.setContentsMargins(0, 0, 0, 0)
         frame_lay.setSpacing(0)
 
         # 1. 최상단 타이틀 바
         self.titlebar = TitleBar(self.frame, self)
         frame_lay.addWidget(self.titlebar)
 
-        # 2. 내부 콘텐츠 컨테이너
+        # 2. 내부 콘텐츠 영역
         content_widget = QWidget()
         root = QVBoxLayout(content_widget)
-        root.setContentsMargins(0, 12, 0, 0) # 타이틀 바와 본문 사이 간격
+        root.setContentsMargins(24, 12, 24, 24)
         root.setSpacing(10)
         frame_lay.addWidget(content_widget)
 
-        # 이하 내부 요소들은 root(content_widget)에 추가
+        # ✅ 헤더 재배치: 소지금 아이콘 | 소지금 | 이름 | 변경버튼 | 기분 | 테마버튼
         header = QHBoxLayout()
         header.setSpacing(8)
+
+        self.money_icon = QLabel()
+        self.money_icon.setFixedSize(20, 20)
+        self.money_icon.setScaledContents(True)
+        header.addWidget(self.money_icon)
 
         self.money_label = QLabel("")
         self.money_label.setObjectName("MoneyLabel")
         header.addWidget(self.money_label)
+
+        header.addSpacing(10)
 
         self.name_label = QLabel("")
         self.name_label.setObjectName("NameLabel")
@@ -188,7 +191,7 @@ class ControlPanel(QWidget):
 
         self.rename_btn = QPushButton("")
         self.rename_btn.setObjectName("RenameIconButton")
-        self.rename_btn.setFixedSize(32, 32)
+        self.rename_btn.setFixedSize(28, 28)
         self.rename_btn.clicked.connect(self.open_name_change)
         header.addWidget(self.rename_btn)
 
@@ -200,7 +203,7 @@ class ControlPanel(QWidget):
 
         self.theme_btn = QPushButton("")
         self.theme_btn.setObjectName("ThemeIconButton")
-        self.theme_btn.setFixedSize(32, 32)
+        self.theme_btn.setFixedSize(28, 28)
         self.theme_btn.clicked.connect(self.toggle_theme)
         header.addWidget(self.theme_btn)
 
@@ -209,7 +212,7 @@ class ControlPanel(QWidget):
         self.chat_log = QTextEdit()
         self.chat_log.setReadOnly(True)
         self.chat_log.setObjectName("ChatLog")
-        self.chat_log.setMinimumHeight(220)
+        self.chat_log.setMinimumHeight(160)
         root.addWidget(self.chat_log, 1)
 
         self.fun_bar = self._make_bar("BarFun", "재미 %p%")
@@ -369,7 +372,6 @@ class ControlPanel(QWidget):
         self.theme = theme_name
 
         window_frame = self.theme_path("window_frame.png")
-        titlebar_bg = self.theme_path("window_titlebar.png")
 
         btn_close_n = self.theme_path("btn_close_normal.png")
         btn_close_h = self.theme_path("btn_close_hover.png")
@@ -385,6 +387,7 @@ class ControlPanel(QWidget):
 
         ic_rename = self.icon_path("ic_rename.png")
         ic_theme = self.icon_path("ic_theme.png")
+        ic_coin = self.icon_path("ic_coin.png") # ✅ 코인 아이콘 추가
 
         if _exists(ic_rename):
             self.rename_btn.setIcon(QIcon(str(ic_rename)))
@@ -397,18 +400,25 @@ class ControlPanel(QWidget):
             self.theme_btn.setIconSize(QSize(18, 18))
         else:
             self.theme_btn.setText("🎨")
+            
+        if _exists(ic_coin):
+            self.money_icon.setPixmap(QPixmap(str(ic_coin)))
+        else:
+            self.money_icon.setText("💰")
+            self.money_icon.setAlignment(Qt.AlignCenter)
 
         text_color = "#ffffff" if self.theme == "dark" else "#333333"
 
+        # ✅ slice 설정(24 24 24 24)을 0 0 0 0으로 바꿔서 원본 비율 강제 유지
+        # ✅ TitleBar 배경을 투명하게 해서 겹침 현상 제거
         qss = f"""
         QWidget#WindowFrame {{
             background: transparent;
-            border-image: url("{_p(window_frame)}") 24 24 24 24 stretch stretch;
+            border-image: url("{_p(window_frame)}") 0 0 0 0 stretch stretch;
         }}
 
         QWidget#TitleBar {{
             background: transparent;
-            border-image: url("{_p(titlebar_bg)}") 16 16 16 16 stretch stretch;
         }}
 
         QLabel#TitleLabel {{
@@ -442,9 +452,8 @@ class ControlPanel(QWidget):
             image: url("{_p(btn_min_p)}");
         }}
 
-        QLabel#MoneyLabel, QLabel#NameLabel, QLabel#MoodLabel {{
+        QLabel#MoneyLabel, QLabel#NameLabel, QLabel#MoodLabel, QLabel {{
             background: transparent;
-            padding: 6px 10px;
             font-weight: 700;
             color: {text_color};
         }}
@@ -452,8 +461,8 @@ class ControlPanel(QWidget):
         QPushButton#RenameIconButton, QPushButton#ThemeIconButton {{
             border: none;
             background: transparent;
-            min-width: 32px;
-            min-height: 32px;
+            min-width: 28px;
+            min-height: 28px;
         }}
 
         QTextEdit#ChatLog {{

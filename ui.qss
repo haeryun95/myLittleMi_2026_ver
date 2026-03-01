@@ -9,11 +9,10 @@
 }
 
 QWidget {
-    background: #fef3ef;
 }
 
 SimpleWindow, ControlPanel {
-    background: #fdebe9;
+    background: #fdebe900;
 }
 
 #MoneyLabel, #NameLabel, #MoodLabel {
