@@ -90,7 +90,7 @@ class ControlPanel(QWidget):
         super().__init__()
         self.state, self.pet = state, pet
         self.theme = default_theme
-        self.user_name = "고요" # 사용자 이름 고정
+        self.user_name = "나" # 사용자 이름 고정
         
         # 하위 창 인스턴스 초기화
         self.home_window = None
@@ -295,8 +295,78 @@ class ControlPanel(QWidget):
         self.chat_log.verticalScrollBar().setValue(self.chat_log.verticalScrollBar().maximum())
 
     # ✅ 펫 상호작용 및 애니메이션 복구
+    def _active_pet_for_chat(self):
+        """현재 화면에 활성화된(보이는) 펫 객체를 반환"""
+        if self.home_window and self.home_window.isVisible() and hasattr(self.home_window, 'pet'):
+            return self.home_window.pet
+        if self.job_window and self.job_window.isVisible() and hasattr(self.job_window, 'pet'):
+            return self.job_window.pet
+        if self.study_window and self.study_window.isVisible() and hasattr(self.study_window, 'pet'):
+            return self.study_window.pet
+        return self.pet
 
-   
+    def log_interaction(self, action_msg: str, pet_reply: str, stat_change: str):
+        """대화 포맷 적용 및 스크롤바 자동 하단 이동"""
+        self.chat_log.append(f"나 : {action_msg}")
+        self.chat_log.append(f"{self.state.pet_name} : {pet_reply} ({stat_change})\n")
+        self.chat_log.verticalScrollBar().setValue(self.chat_log.verticalScrollBar().maximum())
+
+    def feed_pet(self):
+        self.state.hunger = clamp(self.state.hunger + 12)
+        self.state.mood = clamp(self.state.mood + 1)
+        
+        msg = random.choice(["냠냠! 맛있어!", "배부르다 찍!", "밥 최고!"])
+        self.log_interaction("🍚 밥을 줬다!", msg, "포만감 +12, 기분 +1")
+
+        target = self._active_pet_for_chat()
+        if hasattr(target, "trigger_eat_visual"):
+            target.trigger_eat_visual()
+
+        if target and not target.isHidden():
+            trigger_pet_action_bubble(target, self.chat_log, [msg])
+
+    def pet_pet(self):
+        self.state.mood = clamp(self.state.mood + 3)
+        self.state.fun = clamp(self.state.fun + 1)
+        
+        msg = random.choice(["헤헤 기분 좋아 💗", "쫑알쫑알!", "따뜻해..."])
+        self.log_interaction("💗 대화했다!", msg, "기분 +3, 재미 +1")
+
+        target = self._active_pet_for_chat()
+        if hasattr(target, "start_shake"):
+            target.start_shake(sec=0.4, strength=2)
+
+        if target and not target.isHidden():
+            trigger_pet_action_bubble(target, self.chat_log, [msg])
+
+    def play_pet(self):
+        target = self._active_pet_for_chat()
+
+        # 에너지 부족 시 예외 처리
+        if self.state.energy < 4:
+            msg = random.choice(["너무 졸려... 나중에 놀자...", "힘들어 헉헉..."])
+            self.log_interaction("🎮 놀아주려 했다...", msg, "에너지 부족")
+
+            if hasattr(target, "start_sleep_for_60s"):
+                target.start_sleep_for_60s()
+
+            if target and not target.isHidden():
+                trigger_pet_action_bubble(target, self.chat_log, [msg])
+            return
+
+        # 정상 상호작용
+        self.state.energy = clamp(self.state.energy - 4, 0.0, 100.0) # max_energy 대신 안전하게 100.0 (또는 self.state.max_energy 유지)
+        self.state.fun = clamp(self.state.fun + 6)
+        self.state.mood = clamp(self.state.mood + 1)
+        
+        msg = random.choice(["야호! 재밌다!", "우다다다!", "한 번 더 놀자!"])
+        self.log_interaction("🎮 같이 놀았다!", msg, "에너지 -4, 재미 +6, 기분 +1")
+
+        if hasattr(target, "do_jump"):
+            target.do_jump(strength=14)
+
+        if target and not target.isHidden():
+            trigger_pet_action_bubble(target, self.chat_log, [msg])
 
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton: self._old_pos = e.globalPosition().toPoint()

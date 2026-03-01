@@ -160,3 +160,52 @@ QPushButton#MenuButton:pressed {
     padding-top: 2px;
     padding-left: 2px;
 }
+
+/* 채팅로그 (배경 이미지 고정) */
+QTextEdit#ChatLog {
+    background-color: transparent;
+    background-image: url("{panel_chat}");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-attachment: fixed; /* ✅ 스크롤 시 텍스트만 움직이고 배경은 고정됨 */
+    border: none;
+    padding: 12px 10px 30px 12px; /* ✅ 스크롤바 공간을 위해 우측 여백을 10px로 축소 */
+    color: {text_color};
+}
+
+/* -------------------------
+   커스텀 스크롤바 (분홍 톤)
+------------------------- */
+QTextEdit#ChatLog QScrollBar:vertical {
+    border: none;
+    background: rgba(255, 182, 193, 0.15); /* 스크롤바 트랙 배경 (반투명 연분홍) */
+    width: 6px;                            /* 얇고 세련된 두께 */
+    border-radius: 3px;
+    margin: 12px 2px 30px 0px;             /* 채팅창 배경 이미지 패딩과 상하 여백 일치 */
+}
+
+/* 스크롤바 손잡이 */
+QTextEdit#ChatLog QScrollBar::handle:vertical {
+    background: #ffb6c1;                   /* 기본 분홍색 (LightPink) */
+    min-height: 20px;
+    border-radius: 3px;
+}
+
+/* 스크롤바 손잡이 호버 (마우스 오버) */
+QTextEdit#ChatLog QScrollBar::handle:vertical:hover {
+    background: #ff69b4;                   /* 진한 분홍색 (HotPink) */
+}
+
+/* 상하단 화살표 버튼 제거 (깔끔한 디자인 목적) */
+QTextEdit#ChatLog QScrollBar::add-line:vertical, 
+QTextEdit#ChatLog QScrollBar::sub-line:vertical {
+    height: 0px;
+    border: none;
+    background: none;
+}
+
+/* 스크롤바 클릭 시 페이지 이동 영역 배경 제거 */
+QTextEdit#ChatLog QScrollBar::add-page:vertical, 
+QTextEdit#ChatLog QScrollBar::sub-page:vertical {
+    background: none;
+}
