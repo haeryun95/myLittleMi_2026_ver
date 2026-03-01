@@ -1,4 +1,5 @@
 import random
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -363,25 +364,27 @@ class ControlPanel(QWidget):
 
     def handle_interaction(self, user_action_msg, normal_logic):
         target = self._active_pet_for_chat()
-        
         self.user_name = "고요"
-        # ✅ 테이블 격리로 인해 이전 줄의 중앙 정렬이 전염되지 않으므로 정상적으로 왼쪽 정렬됨
+        
         self.chat_log.append(f"<span style='color:#aaaaaa;'><b>{self.user_name}</b> : {user_action_msg}</span>")
         self.chat_log.verticalScrollBar().setValue(self.chat_log.verticalScrollBar().maximum())
 
-        is_sleeping = getattr(target, "is_sleeping", False) or self.state.energy < 4
+        # ✅ sleeping 플래그와 sleep_end_at 시간을 동시에 체크
+        is_sleeping = getattr(target, "sleeping", False) or (hasattr(target, "sleep_end_at") and time.time() < target.sleep_end_at)
 
         def response():
             if is_sleeping:
-                dec_mood = -random.randint(1, 20)
+                dec_mood = -random.randint(5, 15)
                 self.state.mood = clamp(self.state.mood + dec_mood)
-                msg = random.choice(["음냐... 피곤해...", "아 왜 깨워...", "ZZZ... 안 놀아..."])
+                msg = random.choice(["음냐... 더 잘래...", "아 왜 깨워...", "ZZZ... (깊은 잠)"])
                 stats_html = self._format_stat('기분', dec_mood)
                 
                 def sleep_anim():
                     if hasattr(target, "start_shake"): target.start_shake(sec=0.5, strength=3)
-                    if hasattr(target, "start_sleep_for_60s"):
-                        QTimer.singleShot(600, target.start_sleep_for_60s)
+                    # 이미 자고 있으므로 sleep 모드를 다시 강화
+                    if hasattr(target, "set_mode"):
+                        remain = getattr(target, "sleep_end_at", time.time() + 5) - time.time()
+                        target.set_mode("sleep", sec=max(2.0, remain))
                 
                 self._delayed_pet_response(target, msg, stats_html, sleep_anim)
             else:
@@ -476,24 +479,49 @@ class ControlPanel(QWidget):
         original_close = window.closeEvent
         
         def closeEvent(event):
-            original_close(event)
-            other_windows_open = False
-            for w in [self.home_window, self.job_window, self.study_window]:
-                if w and w != window and w.isVisible():
-                    other_windows_open = True
-                    break
-            
-            if not other_windows_open and self.pet:
-                self.pet.show()
-                
-        window.closeEvent = closeEvent
+            if isinstance(window, HouseWindow) and hasattr(window, 'house_pet'):
+                h_pet = window.house_pet
+                if h_pet.sleeping:
+                    self.pet.sleeping = True
+                    self.pet.sleep_end_at = h_pet.sleep_end_at
+                    # 데스크톱 펫의 애니메이션 모드도 즉시 sleep으로 변경
+                    remain = max(0.1, h_pet.sleep_end_at - time.time())
+                    self.pet.set_mode("sleep", sec=remain)
 
+                    
     def open_home(self):
-        if self.pet: self.pet.hide() 
+        if self.pet: 
+            self.pet.hide() 
+            
         if self.home_window is None:
             self.home_window = HouseWindow(self.state, self.pet, self.windowIcon())
-            self._hook_close_event(self.home_window)
-        self.home_window.show(); self.home_window.raise_(); self.home_window.activateWindow()
+            
+            # ✅ 기존 훅 대신, 여기서 직접 종료 시점의 데이터를 꽂아넣음
+            original_close = self.home_window.closeEvent
+            
+            def home_close_wrapper(event):
+                # 1. 닫히기 직전 집 펫의 수면 상태를 메인 펫에게 강제 이식
+                h_pet = self.home_window.house_pet
+                if h_pet and h_pet.sleeping:
+                    self.pet.sleeping = True
+                    self.pet.sleep_end_at = h_pet.sleep_end_at
+                    # 메인 펫이 나타나자마자 자는 모습이도록 모드 설정
+                    remain = max(0.1, h_pet.sleep_end_at - time.time())
+                    self.pet.set_mode("sleep", sec=remain)
+                
+                # 2. 기존 닫기 로직 수행
+                original_close(event)
+                
+                # 3. 메인 펫 부활
+                if self.pet:
+                    self.pet.show()
+                    self.pet.raise_()
+
+            self.home_window.closeEvent = home_close_wrapper
+            
+        self.home_window.show()
+        self.home_window.raise_()
+        self.home_window.activateWindow()
 
     def open_job(self):
         if self.pet: self.pet.hide()

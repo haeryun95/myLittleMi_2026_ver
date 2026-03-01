@@ -330,16 +330,15 @@ class PetWindow(QWidget):
         if int(now * 10) % 20 == 0: self.raise_()
 
         if self.sleeping:
-            if now >= self.sleep_end_at:
-                # 깨어나는 로직
+            if now >= self.sleep_end_at or self.state.energy >= 99.9:
                 self.sleeping = False
-                # ... 
+                self.state.energy = clamp(self.state.energy, 0, 100)
+                self.state.mood = clamp(self.state.mood + 5)
+                self.say("찍! 좀 나아졌어…", 2.2)
                 self.set_mode("normal", 99999)
             else:
-                # ✅ 핵심: 말하는 중(say_until)이 아닐 때 모드가 sleep이 아니면 즉시 복구
                 if self.mode != "sleep" and now > self.say_until:
-                    self.set_mode("sleep", sec=self.sleep_end_at - now)
-                
+                    self.set_mode("sleep", sec=max(0.1, self.sleep_end_at - now))
                 self.state.energy = clamp(self.state.energy + 0.15, 0, 100)
             return
 

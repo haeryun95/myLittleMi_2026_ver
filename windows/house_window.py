@@ -126,6 +126,9 @@ class HousePetWidget(QWidget):
         self.move(random.randint(20, max(20, pw - self.width() - 20)), self.ground_y)
         self.say("찍! 집이다 🏠", duration=2.2)
         self.show()
+        
+        if self.state.energy < 4:
+            self.start_sleep_for_60s()
 
     def get_available_faces(self) -> List[str]:
         return list(self.emotion_map.keys())
@@ -201,86 +204,77 @@ class HousePetWidget(QWidget):
         elif self.mode == "drag" and self.drag_frames:
             self.frame_i = (self.frame_i + 1) % len(self.drag_frames)
         self.update()
-
+    
     def tick_logic(self):
         now = time.time()
 
-        # ✅ 최상단 강제 유지
-        if int(now * 10) % 20 == 0: self.raise_()
-
         if self.sleeping:
-            if now >= self.sleep_end_at:
-                # 깨어나는 로직
+            # ✅ 조건: 시간이 다 됐거나 에너지가 99.9 이상이면 기상
+            if now >= self.sleep_end_at or self.state.energy >= 99.9:
                 self.sleeping = False
-                # ... 
-                self.set_mode("normal", 99999)
+                self.state.energy = clamp(self.state.energy, 0, 100)
+                self.say("찍! 잘 잤다! 개운해!", duration=2.2)
+                self.set_mode("normal", sec=99999)
             else:
-                # ✅ 핵심: 말하는 중(say_until)이 아닐 때 모드가 sleep이 아니면 즉시 복구
+                # 자는 모션 유지 (말할 때 제외)
                 if self.mode != "sleep" and now > self.say_until:
-                    self.set_mode("sleep", sec=self.sleep_end_at - now)
-                
+                    self.set_mode("sleep", sec=max(0.1, self.sleep_end_at - now))
+                # 에너지 회복
                 self.state.energy = clamp(self.state.energy + 0.15, 0, 100)
             return
 
-        # ✅ 표정 업데이트 (happy와 normal 믹싱)
-        if self.mode == "normal" and now > self.face_until and now >= self.next_normal_change:
-            mood = self.state.mood
-            if mood < 30:
-                pool = self.sad_faces or self.normal_faces
-            elif mood > 70:
-                happy_pool = [k for k in self.emotion_map.keys() if "happy" in k.lower()]
-                pool = happy_pool + self.normal_faces # 섞어서 출력
-            else:
-                pool = self.normal_faces
-            
-            if pool:
-                self.current_face = random.choice(pool)
-                self.state.last_face = self.current_face
-            self.next_normal_change = now + NORMAL_RANDOM_INTERVAL
+        if now > self.mode_until and self.mode in ("walk", "sleep", "speak", "eat"):
+            self.set_mode("normal", sec=99999)
 
-        # ✅ 랜덤 말걸기 이벤트 (speak 프레임 적용)
-        if self.mode == "normal" and not self.dragging and now > self.say_until:
-            if random.random() < 0.0005: # 약 0.05% 확률
-                if self.random_dialogues:
-                    msg = random.choice(self.random_dialogues)
-                    self.say(msg, 3.0)
-                    # ✅ 말할 때 speak 모드를 활성화하여 애니메이션 출력
-                    self.set_mode("speak", sec=3.0)
+        self.reset_ground()
 
         if not self.dragging:
-            if now > self.mode_until and self.mode in ("walk", "sleep", "speak", "eat", "sit"):
-                self.set_mode("normal", 99999)
-            
+            left = 0
+            right = (self.parent().width() - self.width()) if self.parent() else 0
             x, y = self.x(), self.y()
-            floor_y = min(self.ground_y, self.screen_rect.bottom() - self.height())
+
             if self.mode == "walk":
                 x += self.vx
-                if x <= self.screen_rect.left() or x + self.width() >= self.screen_rect.right(): self.vx *= -1
+                if x <= left:
+                    x = left
+                    self.vx *= -1
+                elif x >= right:
+                    x = right
+                    self.vx *= -1
+
             self.vy += self.gravity
             y += self.vy
-            if y >= floor_y: y, self.vy = floor_y, 0
+            
+            # ✅ 에러 지점 수정: screen_rect 제거하고 self.ground_y만 사용
+            if y >= self.ground_y:
+                y = self.ground_y
+                self.vy = 0
+
             self.move(int(x), int(y))
+
         self.update()
-        
+    
+    
     #집 상호작용 
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton:
             self.dragging = True
             self.was_dragged = False
+            # ✅ 변수명 통일: press_pos 사용
             self.press_pos = e.globalPosition().toPoint()
-            self.drag_offset = self.press_pos - self.frameGeometry().topLeft()
-            self.setCursor(Qt.ClosedHandCursor)
+            self.start_pos = self.pos()
             
-            # ✅ 수정: 자는 중이 아닐 때만 drag 모드로 변경
+            self.setCursor(Qt.ClosedHandCursor)
+            # 자는 중이 아닐 때만 드래그 모션 적용
             if not self.sleeping and self.drag_frames:
                 self.set_mode("drag", sec=99999)
             e.accept()
 
-
     def mouseMoveEvent(self, e):
         if self.dragging:
             cur = e.globalPosition().toPoint()
-            delta = cur - self.global_press_pos
+            # ✅ 변수명 수정: self.press_pos 사용
+            delta = cur - self.press_pos
             
             if delta.manhattanLength() > 4:
                 self.was_dragged = True
@@ -289,11 +283,9 @@ class HousePetWidget(QWidget):
 
             parent = self.parent()
             if parent:
-                # ✅ 투명 말풍선 공간만큼 위로(-Y) 올라갈 수 있게 허용
+                # 위아래/좌우 이동 제한 (말풍선 공간 고려)
                 min_y = -self.bubble_h
                 max_y = parent.height() - (self.height() // 3)
-                
-                # ✅ 좌우 벽도 반쯤 통과 가능하도록 여유 줌
                 min_x = -(self.width() // 2)
                 max_x = parent.width() - (self.width() // 2)
 
@@ -307,15 +299,15 @@ class HousePetWidget(QWidget):
         if e.button() == Qt.LeftButton:
             self.dragging = False
             self.setCursor(Qt.OpenHandCursor)
-            self.ground_y = min(self.y(), self.screen_rect.bottom() - self.height())
             
-            # ✅ 수정: 드래그 종료 후 상태 체크
+            # ✅ 에러 지점 수정: screen_rect 제거하고 reset_ground 사용
+            self.reset_ground()
+
             if self.sleeping:
-                # 자는 중이면 다시 sleep 모드로 강제 복구
+                # 수면 중이었다면 다시 수면 모드로 복구
                 remain = max(0.1, self.sleep_end_at - time.time())
                 self.set_mode("sleep", sec=remain)
             else:
-                # 안 자는 중이면 정상적으로 normal 복귀
                 if self.mode == "drag":
                     self.set_mode("normal", sec=99999)
             
