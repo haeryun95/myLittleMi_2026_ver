@@ -241,14 +241,16 @@ class HousePetWidget(QWidget):
             self.move(int(x), int(y))
 
         self.update()
-
-    # ✅ 집에서도 클릭/드래그 상호작용
+        
+    #집 상호작용 
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton:
             self.dragging = True
             self.was_dragged = False
-            self.press_pos = e.globalPosition().toPoint()
-            self.drag_offset = self.press_pos - self.frameGeometry().topLeft()
+            # 화면 전체 기준 클릭 좌표와, 부모 창 기준 현재 위젯 위치를 각각 저장
+            self.global_press_pos = e.globalPosition().toPoint()
+            self.start_pos = self.pos()
+            
             self.setCursor(Qt.ClosedHandCursor)
             if self.drag_frames:
                 self.set_mode("drag", sec=99999)
@@ -257,12 +259,15 @@ class HousePetWidget(QWidget):
     def mouseMoveEvent(self, e):
         if self.dragging:
             cur = e.globalPosition().toPoint()
-            if self.press_pos and (cur - self.press_pos).manhattanLength() > 4:
+            delta = cur - self.global_press_pos
+            
+            if delta.manhattanLength() > 4:
                 self.was_dragged = True
 
-            target = cur - self.drag_offset
+            # 원래 위치에서 마우스 이동량만큼만 이동 (클릭한 곳을 정확히 유지)
+            target = self.start_pos + delta
 
-            # house boundary clamp
+            # house boundary clamp (집 밖으로 못 나가게)
             parent = self.parent()
             if parent:
                 target.setX(max(0, min(parent.width() - self.width(), target.x())))

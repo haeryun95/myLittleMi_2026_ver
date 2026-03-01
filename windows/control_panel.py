@@ -1,10 +1,12 @@
 """
-windows/control_panel.py - 메인 컨트롤 패널 (채팅 + 상태 + 버튼들)
+windows/control_panel.py - 메인 컨트롤 패널 (상태 + 버튼들 + 로그)
+- 채팅(입력창, 전송버튼) 제거됨
+- 로그 창 높이 확장 (UX 개선)
 """
 import random
 from typing import Optional
 
-from PySide6.QtCore import QEvent, Qt, QSize, QTimer
+from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication, QGridLayout, QHBoxLayout, QLabel,
@@ -32,8 +34,12 @@ class ControlPanel(QWidget):
         self.state = state
         self.pet = pet
 
-        self.setWindowTitle(f"{state.pet_name} - Chat Panel")
+        self.setWindowTitle(f"{state.pet_name} - Control Panel")
         self.setWindowFlags(Qt.WindowStaysOnTopHint)
+
+        # ✅ 크기 고정
+        self.setFixedSize(400, 600)
+
         if app_icon:
             self.setWindowIcon(app_icon)
 
@@ -68,10 +74,11 @@ class ControlPanel(QWidget):
 
         root.addLayout(header)
 
-        # 채팅 로그
+        # 상태 로그 (채팅 입력창 제거 후 높이 확장)
         self.chat_log = QTextEdit()
         self.chat_log.setReadOnly(True)
         self.chat_log.setObjectName("ChatLog")
+        self.chat_log.setMinimumHeight(300)  # ✅ 최소 높이 300 보장
         root.addWidget(self.chat_log, 1)
 
         # 스테이터스 바
@@ -144,38 +151,18 @@ class ControlPanel(QWidget):
         btn_grid.addWidget(self.study_btn, 1, 2)
         root.addLayout(btn_grid)
 
-        # 입력창 + 전송
-        input_row = QHBoxLayout()
-        self.input = QTextEdit()
-        self.input.setObjectName("ChatInput")
-        self.input.setFixedHeight(72)
-        self.input.installEventFilter(self)
+        # ❌ 입력창(QTextEdit)과 전송 버튼(QPushButton) 삭제됨
+        # ❌ 관련 EventFilter(엔터키 전송 등) 삭제됨
 
-        self.send_btn = QPushButton("전송")
-        self.send_btn.setObjectName("SendButton")
-        self.send_btn.setFixedSize(92, 72)
-        self.send_btn.clicked.connect(self.on_send)
-
-        input_row.addWidget(self.input, 1)
-        input_row.addWidget(self.send_btn)
-        root.addLayout(input_row)
-
-        self.key_hint = QLabel("Enter=전송 / Shift+Enter=줄바꿈 / 드래그=이동 / ESC=종료")
+        self.key_hint = QLabel("ESC=종료")
         self.key_hint.setObjectName("KeyHint")
         root.addWidget(self.key_hint)
 
         # 서브 창들
         self.name_window = NameWindow(self.state, app_icon=app_icon)
-
         self.house_win = HouseWindow(self.state, self.pet, app_icon=app_icon)
-
-        # ✅ 여기서 핵심: JobWindow는 icon이 아니라 app_icon을 받음
         self.job_win = JobWindow(self.state, app_icon=app_icon)
-
-        # 소모품 상점(StudyWindow에서 열 것)
         self.shop_win = ShopWindow(self.state, app_icon=app_icon)
-
-        # StudyWindow에 shop_win 주입(같은 창 공유)
         self.study_win = StudyWindow(self.state, shop_win=self.shop_win, app_icon=app_icon)
 
         self._sync_ui()
@@ -203,41 +190,24 @@ class ControlPanel(QWidget):
         self.hunger_bar.setValue(int(self.state.hunger))
         self.energy_bar.setValue(int(self.state.energy))
 
-        self.setWindowTitle(f"{self.state.pet_name} - Chat Panel")
-
-    def eventFilter(self, obj, event):
-        if obj is self.input and event.type() == QEvent.KeyPress:
-            if event.key() in (Qt.Key_Return, Qt.Key_Enter):
-                if event.modifiers() & Qt.ShiftModifier:
-                    return False
-                self.on_send()
-                return True
-            if event.key() == Qt.Key_Escape:
-                QApplication.quit()
-                return True
-        return super().eventFilter(obj, event)
+        self.setWindowTitle(f"{self.state.pet_name} - Control Panel")
 
     # -------------------------
     # 버튼 동작
     # -------------------------
-    
     def feed_pet(self):
         self.state.hunger = clamp(self.state.hunger + 12)
         self.state.mood = clamp(self.state.mood + 1)
         self._append_log("🍚 밥을 줬다!")
         
-        # 1. 대사 선택
         msg = random.choice(["냠냠! 맛있어!", "배부르다 찍!", "밥 최고!"])
-        
-        # 2. 채팅 로그에 추가
         self._append_log(f"{self.state.pet_name}: {msg}")
         
-        # 3. 말풍선 띄우기 (리스트 대신 문자열 하나만 전달하도록 helper 함수를 수정하지 않고 이렇게 씀)
-        trigger_pet_action_bubble(
-            self._active_pet_for_chat(),
-            self.chat_log,
-            [msg]
-        )
+        target = self._active_pet_for_chat()
+        if hasattr(target, "trigger_eat_visual"):
+            target.trigger_eat_visual() # ✅ 먹는 모션 실행
+            
+        trigger_pet_action_bubble(target, self.chat_log, [msg])
 
     def pet_pet(self):
         self.state.mood = clamp(self.state.mood + 3)
@@ -247,23 +217,24 @@ class ControlPanel(QWidget):
         msg = random.choice(["헤헤 기분 좋아 💗", "더 쓰다듬어줘!", "따뜻해..."])
         self._append_log(f"{self.state.pet_name}: {msg}")
 
-        trigger_pet_action_bubble(
-            self._active_pet_for_chat(),
-            self.chat_log,
-            [msg]
-        )
+        target = self._active_pet_for_chat()
+        if hasattr(target, "start_shake"):
+            target.start_shake(sec=0.4, strength=2) # ✅ 기분 좋아서 흔들림
+            
+        trigger_pet_action_bubble(target, self.chat_log, [msg])
 
     def play_pet(self):
+        target = self._active_pet_for_chat()
+        
         if self.state.energy < 4:
             self._append_log("😴 에너지가 부족해서 못 놀겠어…")
             msg = random.choice(["너무 졸려... 나중에 놀자...", "힘들어 헉헉..."])
             self._append_log(f"{self.state.pet_name}: {msg}")
             
-            trigger_pet_action_bubble(
-                self._active_pet_for_chat(),
-                self.chat_log,
-                [msg]
-            )
+            if hasattr(target, "start_sleep_for_60s"):
+                target.start_sleep_for_60s() # ✅ 에너지 없으면 자는 모션 실행
+                
+            trigger_pet_action_bubble(target, self.chat_log, [msg])
             return
             
         self.state.energy = clamp(self.state.energy - 4, 0.0, self.state.max_energy)
@@ -274,11 +245,10 @@ class ControlPanel(QWidget):
         msg = random.choice(["야호! 재밌다!", "우다다다!", "한 번 더 놀자!"])
         self._append_log(f"{self.state.pet_name}: {msg}")
 
-        trigger_pet_action_bubble(
-            self._active_pet_for_chat(),
-            self.chat_log,
-            [msg]
-        )
+        if hasattr(target, "do_jump"):
+            target.do_jump(strength=14) # ✅ 신나서 점프 모션
+            
+        trigger_pet_action_bubble(target, self.chat_log, [msg])
 
     def open_home(self):
         self.house_win.show()
@@ -304,27 +274,9 @@ class ControlPanel(QWidget):
         self.chat_log.append(msg)
 
     def _active_pet_for_chat(self):
-        # ✅ 집 창이 열려있으면 집 안 펫에게 대화 라우팅
         try:
             if self.house_win.isVisible():
                 return self.house_win.house_pet
         except Exception:
             pass
         return self.pet
-
-    def on_send(self):
-        msg = (self.input.toPlainText() or "").strip()
-        if not msg:
-            return
-
-        self._append_log(f"나: {msg}")
-        self.input.clear()
-
-        target = self._active_pet_for_chat()
-        try:
-            if hasattr(target, "send_chat_from_panel"):
-                target.send_chat_from_panel(msg, self.chat_log)
-            else:
-                self.chat_log.append("[오류] 펫 객체에 send_chat_from_panel이 없어.")
-        except Exception as ex:
-            self.chat_log.append(f"[오류] 대화 처리 실패: {ex}")
