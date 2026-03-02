@@ -1,7 +1,7 @@
 * {
     font-family: "Galmuri14", "Malgun Gothic";
     font-size: 11pt;
-    color: #3a2333;
+    color: #703355;
 }
 
 /* 메인 프레임 */
@@ -208,4 +208,9 @@ QTextEdit#ChatLog QScrollBar::sub-line:vertical {
 QTextEdit#ChatLog QScrollBar::add-page:vertical, 
 QTextEdit#ChatLog QScrollBar::sub-page:vertical {
     background: none;
+}
+
+#PanelStatus {
+    border-image: url({panel_status}) 10 10 10 10; /* 10px 코너 고정 예시 */
+    background-color: transparent;
 }

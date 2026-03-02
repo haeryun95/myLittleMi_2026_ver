@@ -20,14 +20,12 @@ from windows.job_window import JobWindow
 from windows.study_window import StudyWindow
 
 # -------------------------
-# Helpers
+# Helpers (경로 구조 개편)
 # -------------------------
 def _project_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
-ASSET_UI_DIR = _project_root() / "asset" / "ui"
-ICON_DIR = ASSET_UI_DIR / "icon"
-THEME_DIR = ASSET_UI_DIR / "theme"
+THEME_BASE_DIR = _project_root() / "asset" / "theme"
 
 def _p(p: Path) -> str:
     return p.resolve().as_posix()
@@ -151,23 +149,21 @@ class ControlPanel(QWidget):
         self.root.addWidget(self.header_widget)
         self.root.addSpacing(6)
 
-        # ✅ 배경 영역(컨테이너)과 텍스트 영역(스크롤) 분리
+        # ✅ 채팅창
         chat_bg_widget = StyledWidget()
-        chat_bg_widget.setObjectName("ChatLog") # ui.qss 배경 타겟
+        chat_bg_widget.setObjectName("ChatLog") 
         chat_bg_widget.setFixedHeight(85)
         
         chat_lay = QVBoxLayout(chat_bg_widget)
-        # 패딩을 줄여 텍스트 공간 확보 (L, T, R, B / 스크롤바를 위해 R은 2로 최소화)
         chat_lay.setContentsMargins(8, 6, 2, 6) 
         chat_lay.setSpacing(0)
 
         self.chat_log = QTextEdit()
         self.chat_log.setObjectName("ChatText")
         self.chat_log.setReadOnly(True)
-        self.chat_log.document().setDocumentMargin(2) # 텍스트 안쪽 여백 최소화
-        self.chat_log.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded) # 스크롤바 작동
+        self.chat_log.document().setDocumentMargin(2) 
+        self.chat_log.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded) 
         
-        # 완전 투명화하여 부모의 배경이 보이게 처리
         self.chat_log.setStyleSheet("background: transparent; border: none;")
         self.chat_log.viewport().setAutoFillBackground(False)
         self.chat_log.setAttribute(Qt.WA_TranslucentBackground, True)
@@ -176,9 +172,13 @@ class ControlPanel(QWidget):
         chat_lay.addWidget(self.chat_log)
         self.root.addWidget(chat_bg_widget)
 
-        self.status_container = QWidget()
+        # ✅ 스탯창: 단순 QWidget에서 StyledWidget으로 변경하여 배경 할당
+        self.status_container = StyledWidget()
+        self.status_container.setObjectName("PanelStatus") # ui.qss 에서 타겟팅
+        self.status_container.setFixedSize(292, 132) 
+        
         status_vbox = QVBoxLayout(self.status_container)
-        status_vbox.setContentsMargins(0, 4, 0, 0)
+        status_vbox.setContentsMargins(6, 8, 6, 8) 
         status_vbox.setSpacing(4) 
 
         self.status_rows = {}
@@ -220,7 +220,7 @@ class ControlPanel(QWidget):
             status_vbox.addWidget(row_widget, 0, Qt.AlignCenter)
             self.status_rows[key] = (gauge_lbl, st_btn, icon_name, val_lbl)
 
-        self.root.addWidget(self.status_container)
+        self.root.addWidget(self.status_container, 0, Qt.AlignCenter)
         self.root.addSpacing(10)
 
         self.btn_widgets = [] 
@@ -260,26 +260,33 @@ class ControlPanel(QWidget):
 
     def apply_theme(self, theme_name: str):
         self.theme = theme_name
-        qss_file = THEME_DIR / "ui.qss"
+        tp = THEME_BASE_DIR / self.theme
+        ui_dir = tp / "ui"
+        self.current_icon_dir = tp / "icon" # 아이콘 업데이트 시 참조용
+        
+        # ui.qss가 ui 폴더 안에 있는지, 테마 최상단에 있는지 유동적으로 확인
+        qss_file = ui_dir / "ui.qss"
+        if not qss_file.exists():
+            qss_file = tp / "ui.qss"
         if not qss_file.exists(): return
+        
         with open(qss_file, "r", encoding="utf-8") as f: style = f.read()
-        tp = THEME_DIR / self.theme
+        
         mapping = {
-            "window_frame": _p(tp / "window_frame.png"), "titlebar_bg": _p(tp / "window_titlebar.png"),
-            "panel_header": _p(tp / "panel_header.png"), "panel_status": _p(tp / "panel_status.png"),
-            "panel_chat": _p(tp / "panel_chat.png"), 
-            "btn_m": _p(tp / "btn_m.png"), 
-            "btn_m_press": _p(tp / "btn_m_press.png"), 
-            "btn_ic": _p(tp / "btn_ic.png"), "ic_setting": _p(ICON_DIR / "ic_setting.png"), 
-            "ic_min": _p(ICON_DIR / "ic_min.png"), "ic_close": _p(ICON_DIR / "ic_close.png"), 
-            "btn_close_hover": _p(tp / "btn_close_hover.png"), "bar_track": _p(tp / "bar_track.png"),
-            "bar_track_fun": _p(tp / "bar_track_fun.png"), "bar_track_mood": _p(tp / "bar_track_mood.png"),
-            "bar_track_hunger": _p(tp / "bar_track_hunger.png"), "bar_track_energy": _p(tp / "bar_track_energy.png"),
+            "window_frame": _p(ui_dir / "window_frame.png"), "titlebar_bg": _p(ui_dir / "window_titlebar.png"),
+            "panel_header": _p(ui_dir / "panel_header.png"), "panel_status": _p(ui_dir / "panel_status.png"),
+            "panel_chat": _p(ui_dir / "panel_chat.png"), 
+            "btn_m": _p(ui_dir / "btn_m.png"), 
+            "btn_m_press": _p(ui_dir / "btn_m_press.png"), 
+            "btn_ic": _p(ui_dir / "btn_ic.png"), "ic_setting": _p(self.current_icon_dir / "ic_setting.png"), 
+            "ic_min": _p(self.current_icon_dir / "ic_min.png"), "ic_close": _p(self.current_icon_dir / "ic_close.png"), 
+            "btn_close_hover": _p(ui_dir / "btn_close_hover.png"), "bar_track": _p(ui_dir / "bar_track.png"),
+            "bar_track_fun": _p(ui_dir / "bar_track_fun.png"), "bar_track_mood": _p(ui_dir / "bar_track_mood.png"),
+            "bar_track_hunger": _p(ui_dir / "bar_track_hunger.png"), "bar_track_energy": _p(ui_dir / "bar_track_energy.png"),
             "text_color": "#ffffff" if self.theme == "dark" else "#333333"
         }
         for k, v in mapping.items(): style = style.replace(f"{{{k}}}", v)
         
-        # ✅ ChatText 전용 스타일 추가 (기존 ChatLog 컨테이너의 배경은 유지됨)
         text_color = "#ffffff" if self.theme == "dark" else "#333333"
         style += f"\n#ChatText {{ color: {text_color}; font-size: 11px; background: transparent; border: none; }}"
         
@@ -287,24 +294,25 @@ class ControlPanel(QWidget):
         self._update_icons()
 
     def _update_icons(self):
-        sys_p = ICON_DIR / "ic_main.png" 
+        sys_p = self.current_icon_dir / "ic_main.png" 
         if sys_p.exists():
             pix = QPixmap(str(sys_p.resolve()))
             self.titlebar.sys_icon.setScaledContents(True) 
             self.titlebar.sys_icon.setPixmap(pix.scaled(16, 16, Qt.KeepAspectRatio, Qt.SmoothTransformation)) 
         
-        coin_p = ICON_DIR / "ic_coin.png"
+        coin_p = self.current_icon_dir / "ic_coin.png"
         if coin_p.exists():
             pix = QPixmap(str(coin_p.resolve())).scaled(16, 16, Qt.KeepAspectRatio, Qt.SmoothTransformation) 
             self.money_icon.setPixmap(pix)
         
         for key in self.status_rows:
             gauge, btn, img_name, val_lbl = self.status_rows[key]
-            path = ICON_DIR / img_name
+            path = self.current_icon_dir / img_name
             if path.exists(): 
                 btn.setIcon(QIcon(str(path.resolve())))
                 btn.setIconSize(QSize(16, 16)) 
 
+        # 하단 6개 버튼은 기존대로 app_icon_DIR 유지
         for btn, img_name in self.btn_widgets:
             path = app_icon_DIR / img_name
             if path.exists(): 
@@ -439,9 +447,7 @@ class ControlPanel(QWidget):
         stat_box = f"<br>&nbsp;&nbsp;└ <span style='background-color: rgba(255, 160, 209, 0.15); padding: 1px 4px;'>{stats_html}</span>" if stats_html else ""
         
         if hasattr(self, 'chat_log'):
-            # 마진을 줄이고 append
             self.chat_log.append(f"<div style='margin-bottom: 4px; line-height: 1.2;'><b>{self.state.pet_name}</b> : {pet_msg}{stat_box}</div>")
-            # 스크롤 최하단 자동 이동
             self.chat_log.verticalScrollBar().setValue(self.chat_log.verticalScrollBar().maximum())
         
         if anim_callback: anim_callback()
@@ -536,7 +542,6 @@ class ControlPanel(QWidget):
             self._delayed_pet_response(target, msg, stats_html, anim)
             
         self.handle_interaction("🎮 같이 놀았다!", normal_logic)
-
 
 class SettingsWindow(StyledWidget):
     def __init__(self, state: PetState, panel: "ControlPanel", icon: QIcon):
