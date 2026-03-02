@@ -269,18 +269,21 @@ class ControlPanel(QWidget):
     def apply_theme(self, theme_name: str):
         self.theme = theme_name
         tp = THEME_BASE_DIR / self.theme
-        ui_dir = tp / "ui"
+        ui_dir = tp / "ui"  # ✅ 경로 정의 추가
         self.current_icon_dir = tp / "icon" 
         
-        qss_file = ui_dir / "ui.qss"
-        if not qss_file.exists():
-            qss_file = tp / "ui.qss"
-            
-        if not qss_file.exists(): 
-            print(f"❌ [에러] QSS 파일을 찾을 수 없어 테마 적용 실패! 경로: {qss_file}")
-            return
+        # 1. QSS 파일들 읽기 (Common + Theme)
+        common_qss_path = THEME_BASE_DIR / "common.qss"
+        theme_qss_path = tp / f"{theme_name}.qss"
         
-        with open(qss_file, "r", encoding="utf-8") as f: style = f.read()
+        style_content = ""
+        for p in [common_qss_path, theme_qss_path]:
+            if p.exists():
+                with open(p, "r", encoding="utf-8") as f:
+                    style_content += f.read() + "\n"
+            
+        # 2. 이미지 및 색상 매핑
+        text_color = "#ffffff" if self.theme == "dark" else "#703355" # 핑크는 요청한 색상으로
         
         mapping = {
             "window_frame": _p(ui_dir / "window_frame.png"), 
@@ -296,23 +299,30 @@ class ControlPanel(QWidget):
             "bar_track_fun": _p(ui_dir / "bar_track_fun.png"), 
             "bar_track_mood": _p(ui_dir / "bar_track_mood.png"),
             "bar_track_hunger": _p(ui_dir / "bar_track_hunger.png"), 
-            "bar_track_energy": _p(ui_dir / "bar_track_energy.png")
+            "bar_track_energy": _p(ui_dir / "bar_track_energy.png"),
+            "text_color": text_color,
+            "ic_setting": _p(self.current_icon_dir / "ic_setting.png"),
+            "ic_min": _p(self.current_icon_dir / "ic_min.png"),
+            "ic_close": _p(self.current_icon_dir / "ic_close.png")
         }
 
-        for k, v in mapping.items(): 
-            style = style.replace(f"{{{k}}}", v)
+        # 3. 매핑 값 치환
+        for k, v in mapping.items():
+            style_content = style_content.replace(f"{{{k}}}", v)
         
-        text_color = "#ffffff" if self.theme == "dark" else "#333333"
-        style += f"\n#ChatText {{ color: {text_color}; font-size: 11px; background: transparent; border: none; }}"
+        # 4. 동적 스타일 추가 (채팅 텍스트 및 배경 강제 적용)
+        style_content += f"\n#ChatText {{ color: {text_color}; font-size: 11px; background: transparent; border: none; }}"
         
         chat_img = mapping.get("panel_chat", "")
         status_img = mapping.get("panel_status", "")
-        if Path(chat_img).exists():
-            style += f"\n#ChatLog {{ border-image: url('{chat_img}') 0 0 0 0 stretch stretch; background-color: transparent; }}"
-        if Path(status_img).exists():
-            style += f"\n#PanelStatus {{ border-image: url('{status_img}') 0 0 0 0 stretch stretch; background-color: transparent; }}"
         
-        self.setStyleSheet(style)
+        if Path(chat_img).exists():
+            style_content += f"\n#ChatLog {{ border-image: url('{chat_img}') 0 0 0 0 stretch stretch; background-color: transparent; }}"
+        if Path(status_img).exists():
+            style_content += f"\n#PanelStatus {{ border-image: url('{status_img}') 0 0 0 0 stretch stretch; background-color: transparent; }}"
+        
+        # 5. 최종 적용
+        self.setStyleSheet(style_content)
         self._update_icons()
 
 

@@ -1,0 +1,44 @@
+/* 공통 폰트 및 기본 설정 */
+* {
+    font-family: "Galmuri14", "Malgun Gothic";
+    font-size: 11pt;
+}
+
+/* 메인 구조 */
+QWidget#WindowFrame { background-color: transparent; background-image: url("{window_frame}"); background-repeat: no-repeat; background-position: center; }
+QWidget#TitleBar { background-color: transparent; background-image: url("{titlebar_bg}"); border: none; }
+QWidget#PanelHeader { background-color: transparent; background-image: url("{panel_header}"); background-repeat: no-repeat; }
+
+/* 타이틀바 버튼 공통 */
+QPushButton#SettingButton, QPushButton#MinButton, QPushButton#CloseButton {
+    background-color: transparent;
+    background-image: url("{btn_ic}");
+    background-repeat: no-repeat;
+    background-position: center;
+    border: none;
+    width: 32px;
+    height: 32px;
+}
+
+/* 스탯 게이지 공통 */
+QLabel#BarTrack { background-color: transparent; background-image: url("{bar_track}"); background-repeat: no-repeat; }
+QLabel#GaugeFun, QLabel#GaugeMood, QLabel#GaugeHunger, QLabel#GaugeEnergy { background-repeat: no-repeat; background-position: left center; }
+
+/* 하단 메뉴 버튼 공통 */
+QPushButton#MenuButton {
+    background-color: transparent;
+    background-image: url("{btn_m}");
+    background-repeat: no-repeat;
+    background-position: center;
+    border: none;
+    font-weight: 800;
+}
+QPushButton#MenuButton:pressed {
+    background-image: url("{btn_m_press}");
+    padding-top: 2px;
+    padding-left: 2px;
+}
+
+/* 스크롤바 화살표 제거 (공통 디자인) */
+QScrollBar::add-line, QScrollBar::sub-line { height: 0px; border: none; background: none; }
+QScrollBar::add-page, QScrollBar::sub-page { background: none; }

@@ -1,0 +1,53 @@
+/* 핑크 테마 전용 색상 및 텍스트 */
+* { color: #703355; }
+QLabel#TitleLabel, QLabel#MoneyLabel, QLabel#NameLabel, QLabel#MoodLabel, QLabel#StatusNameLabel {
+    color: {text_color};
+}
+
+/* 타이틀바 아이콘 적용 */
+QPushButton#SettingButton { qproperty-icon: url("{ic_setting}"); qproperty-iconSize: 22px 22px; }
+QPushButton#MinButton { qproperty-icon: url("{ic_min}"); qproperty-iconSize: 22px 22px; }
+QPushButton#CloseButton { qproperty-icon: url("{ic_close}"); qproperty-iconSize: 22px 22px; }
+QPushButton#CloseButton:hover { qproperty-icon: url("{btn_close_hover}"); }
+
+/* 게이지 이미지 적용 */
+QLabel#GaugeFun { background-image: url("{bar_track_fun}"); }
+QLabel#GaugeMood { background-image: url("{bar_track_mood}"); }
+QLabel#GaugeHunger { background-image: url("{bar_track_hunger}"); }
+QLabel#GaugeEnergy { background-image: url("{bar_track_energy}"); }
+
+/* 채팅창 및 스크롤바 (핑크 포인트) */
+QTextEdit#ChatLog {
+    background-color: transparent;
+    background-image: url("{panel_chat}");
+    background-repeat: no-repeat;
+    background-position: center;
+    border: none;
+    padding: 12px 18px 25px 12px;
+    color: {text_color};
+}
+
+/* 핑크 스크롤바 */
+QTextEdit#ChatLog QScrollBar:vertical {
+    border: none;
+    background: rgba(255, 182, 193, 0.1); /* 매우 연한 배경 */
+    width: 6px;
+    margin: 15px 4px 25px 0px;
+    border-radius: 3px;
+}
+
+QTextEdit#ChatLog QScrollBar::handle:vertical {
+    background: #FFB6C1; /* 기본 분홍 */
+    min-height: 20px;
+    border-radius: 3px;
+}
+
+QTextEdit#ChatLog QScrollBar::handle:vertical:hover {
+    background: #FF69B4; /* 호버 시 진한 핑크 */
+}
+
+/* 스탯 배경 프레임 */
+#PanelStatus {
+    border-image: url("{panel_status}") 10 10 10 10;
+    background-color: transparent;
+}
