@@ -55,20 +55,20 @@ class TitleBar(StyledWidget):
         super().__init__(frame_parent)
         self.panel = panel
         self.setObjectName("TitleBar")
-        self.setFixedHeight(44) # 48 -> 44 축소
+        self.setFixedHeight(36) 
         
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(12, 0, 12, 0)
-        lay.setSpacing(8) 
+        lay.setContentsMargins(10, 0, 10, 0) 
+        lay.setSpacing(4) 
         
         self.sys_icon = QLabel()
         self.sys_icon.setObjectName("SystemIcon")
-        self.sys_icon.setFixedSize(20, 20) # 24 -> 20 축소
+        self.sys_icon.setFixedSize(16, 16) 
         lay.addWidget(self.sys_icon)
         
         self.title_label = QLabel("라이미 - Panel")
         self.title_label.setObjectName("TitleLabel")
-        self.title_label.setStyleSheet("font-size: 13px;")
+        self.title_label.setStyleSheet("font-size: 12px;") 
         lay.addWidget(self.title_label)
         
         lay.addStretch(1)
@@ -80,7 +80,7 @@ class TitleBar(StyledWidget):
         for btn, slot in [(self.set_btn, self.panel.open_settings), 
                           (self.min_btn, self.panel.minimize_to_tray), 
                           (self.close_btn, self.panel.quit_app)]:
-            btn.setFixedSize(28, 28) # 32 -> 28 축소
+            btn.setFixedSize(24, 24) 
             btn.clicked.connect(slot)
             lay.addWidget(btn)
 
@@ -103,7 +103,7 @@ class ControlPanel(QWidget):
 
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
-        self.setFixedSize(360, 520) # ✅ 360x520 크기 축소
+        self.setFixedSize(300, 380)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -120,30 +120,30 @@ class ControlPanel(QWidget):
 
         content_widget = QWidget()
         self.root = QVBoxLayout(content_widget)
-        self.root.setContentsMargins(20, 4, 20, 4)
+        self.root.setContentsMargins(10, 4, 10, 6) 
         self.root.setSpacing(0)
         frame_lay.addWidget(content_widget)
 
         self.header_widget = StyledWidget()
         self.header_widget.setObjectName("PanelHeader")
-        self.header_widget.setFixedHeight(46) # 50 -> 46 축소
+        self.header_widget.setFixedHeight(36) 
         h_lay = QHBoxLayout(self.header_widget)
-        h_lay.setContentsMargins(12, 0, 12, 0)
-        h_lay.setSpacing(10)
+        h_lay.setContentsMargins(10, 0, 10, 0) 
+        h_lay.setSpacing(8)
         
-        self.money_icon = QLabel(); self.money_icon.setFixedSize(22, 22)
+        self.money_icon = QLabel(); self.money_icon.setFixedSize(16, 16) 
         self.money_label = QLabel("0"); self.money_label.setObjectName("MoneyLabel")
-        self.money_label.setStyleSheet("font-size: 11px;")
-        
+        self.money_label.setStyleSheet("font-size: 11px;") 
+
         self.name_label = QLabel(""); self.name_label.setObjectName("NameLabel")
-        self.name_label.setStyleSheet("font-weight: bold; font-size: 12px;")
+        self.name_label.setStyleSheet("font-weight: bold; font-size: 12px;") 
 
         self.mood_label = QLabel(""); self.mood_label.setObjectName("MoodLabel")
         self.mood_label.setAlignment(Qt.AlignCenter)
-        self.mood_label.setStyleSheet("background: rgba(255,255,255,0.2); border-radius: 8px; padding: 2px 6px; font-size: 11px;")
+        self.mood_label.setStyleSheet("background: rgba(255,255,255,0.2); border-radius: 6px; padding: 2px 6px; font-size: 11px; height: 18px;")
 
         h_lay.addWidget(self.money_icon); h_lay.addWidget(self.money_label)
-        h_lay.addStretch(1) 
+        h_lay.addStretch(1)
         h_lay.addWidget(self.name_label)
         h_lay.addStretch(1)
         h_lay.addWidget(self.mood_label)
@@ -151,18 +151,35 @@ class ControlPanel(QWidget):
         self.root.addWidget(self.header_widget)
         self.root.addSpacing(6)
 
-        # ✅ 채팅 로그 주석 처리 (UI에서 숨김)
-        # self.chat_log = QTextEdit()
-        # self.chat_log.setReadOnly(True); self.chat_log.setObjectName("ChatLog")
-        # self.chat_log.setFixedHeight(160)
-        # self.chat_log.viewport().setAutoFillBackground(False)
-        # self.chat_log.viewport().setAttribute(Qt.WA_TranslucentBackground, True)
-        # self.root.addWidget(self.chat_log)
+        # ✅ 배경 영역(컨테이너)과 텍스트 영역(스크롤) 분리
+        chat_bg_widget = StyledWidget()
+        chat_bg_widget.setObjectName("ChatLog") # ui.qss 배경 타겟
+        chat_bg_widget.setFixedHeight(85)
+        
+        chat_lay = QVBoxLayout(chat_bg_widget)
+        # 패딩을 줄여 텍스트 공간 확보 (L, T, R, B / 스크롤바를 위해 R은 2로 최소화)
+        chat_lay.setContentsMargins(8, 6, 2, 6) 
+        chat_lay.setSpacing(0)
+
+        self.chat_log = QTextEdit()
+        self.chat_log.setObjectName("ChatText")
+        self.chat_log.setReadOnly(True)
+        self.chat_log.document().setDocumentMargin(2) # 텍스트 안쪽 여백 최소화
+        self.chat_log.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded) # 스크롤바 작동
+        
+        # 완전 투명화하여 부모의 배경이 보이게 처리
+        self.chat_log.setStyleSheet("background: transparent; border: none;")
+        self.chat_log.viewport().setAutoFillBackground(False)
+        self.chat_log.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.chat_log.viewport().setAttribute(Qt.WA_TranslucentBackground, True)
+        
+        chat_lay.addWidget(self.chat_log)
+        self.root.addWidget(chat_bg_widget)
 
         self.status_container = QWidget()
         status_vbox = QVBoxLayout(self.status_container)
-        status_vbox.setContentsMargins(0, 6, 0, 0)
-        status_vbox.setSpacing(3) 
+        status_vbox.setContentsMargins(0, 4, 0, 0)
+        status_vbox.setSpacing(4) 
 
         self.status_rows = {}
         status_info = [
@@ -175,38 +192,42 @@ class ControlPanel(QWidget):
         for key, kr_name, icon_name, obj_name in status_info:
             row_widget = StyledWidget()
             row_widget.setObjectName("StatusRow")
-            row_widget.setFixedSize(320, 30) # 352 -> 320 축소
+            row_widget.setFixedSize(280, 26) 
             row_lay = QHBoxLayout(row_widget)
             
-            row_lay.setContentsMargins(10, 0, 2, 0) 
-            row_lay.setSpacing(5)
+            row_lay.setContentsMargins(5, 0, 5, 0) 
+            row_lay.setSpacing(5) 
 
             st_btn = QPushButton(); st_btn.setObjectName("HeaderIconButton")
-            st_btn.setFixedSize(24, 24)
+            st_btn.setFixedSize(20, 20) 
             kr_lbl = QLabel(kr_name); kr_lbl.setObjectName("StatusNameLabel")
+            kr_lbl.setFixedWidth(36) 
+            kr_lbl.setAlignment(Qt.AlignCenter)
             kr_lbl.setStyleSheet("font-size: 11px;")
             
-            track_lbl = QLabel(); track_lbl.setObjectName("BarTrack"); track_lbl.setFixedSize(215, 24) # 246 -> 215 축소
-            gauge_lbl = QLabel(track_lbl); gauge_lbl.setObjectName(obj_name); gauge_lbl.setFixedSize(0, 24)
+            track_lbl = QLabel(); track_lbl.setObjectName("BarTrack"); track_lbl.setFixedSize(150, 18) 
+            gauge_lbl = QLabel(track_lbl); gauge_lbl.setObjectName(obj_name); gauge_lbl.setFixedSize(0, 18)
             
             val_lbl = QLabel(track_lbl)
-            val_lbl.setFixedSize(215, 24)
+            val_lbl.setFixedSize(150, 18) 
             val_lbl.setAlignment(Qt.AlignCenter)
             val_lbl.setStyleSheet("color: white; font-weight: bold; font-size: 10px; background: transparent;")
 
             row_lay.addWidget(st_btn); row_lay.addWidget(kr_lbl)
-            row_lay.addStretch(1); row_lay.addWidget(track_lbl)
-            status_vbox.addWidget(row_widget, 0, Qt.AlignCenter)
+            row_lay.addWidget(track_lbl)
+            row_lay.addStretch(1) 
             
+            status_vbox.addWidget(row_widget, 0, Qt.AlignCenter)
             self.status_rows[key] = (gauge_lbl, st_btn, icon_name, val_lbl)
 
         self.root.addWidget(self.status_container)
         self.root.addSpacing(10)
 
         self.btn_widgets = [] 
-        btn_container = QWidget(); btn_container.setFixedWidth(320)
+        btn_container = QWidget(); btn_container.setFixedWidth(280) 
         btn_grid = QGridLayout(btn_container)
-        btn_grid.setContentsMargins(2, 0, 2, 0); btn_grid.setSpacing(4)
+        btn_grid.setContentsMargins(0, 0, 0, 0) 
+        btn_grid.setSpacing(6) 
         
         self.actions_info = [
             ("밥주기", "feed.png", self.feed_pet), ("대화", "pet.png", self.pet_pet),
@@ -216,18 +237,17 @@ class ControlPanel(QWidget):
         
         for i, (txt, img, func) in enumerate(self.actions_info):
             btn = QPushButton(txt); btn.setObjectName("MenuButton")
-            btn.setFixedSize(102, 42) # 버튼 크기 비율 맞춤
+            btn.setFixedSize(90, 36) 
             btn.clicked.connect(func)
             btn_grid.addWidget(btn, i // 3, i % 3)
             self.btn_widgets.append((btn, img))
             
         self.root.addWidget(btn_container, 0, Qt.AlignCenter)
-
         self.root.addStretch(1)
 
         self.guide_label = QLabel("ESC = 패널 닫기")
         self.guide_label.setAlignment(Qt.AlignCenter)
-        self.guide_label.setStyleSheet("color: #fff; font-size: 12px; font-weight: bold; margin-bottom: 2px;")
+        self.guide_label.setStyleSheet("color: #fff; font-size: 11px; font-weight: bold; margin-bottom: 2px;") 
         self.root.addWidget(self.guide_label)
 
         for btn in self.findChildren(QPushButton):
@@ -258,6 +278,11 @@ class ControlPanel(QWidget):
             "text_color": "#ffffff" if self.theme == "dark" else "#333333"
         }
         for k, v in mapping.items(): style = style.replace(f"{{{k}}}", v)
+        
+        # ✅ ChatText 전용 스타일 추가 (기존 ChatLog 컨테이너의 배경은 유지됨)
+        text_color = "#ffffff" if self.theme == "dark" else "#333333"
+        style += f"\n#ChatText {{ color: {text_color}; font-size: 11px; background: transparent; border: none; }}"
+        
         self.setStyleSheet(style)
         self._update_icons()
 
@@ -266,11 +291,11 @@ class ControlPanel(QWidget):
         if sys_p.exists():
             pix = QPixmap(str(sys_p.resolve()))
             self.titlebar.sys_icon.setScaledContents(True) 
-            self.titlebar.sys_icon.setPixmap(pix.scaled(40, 40, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            self.titlebar.sys_icon.setPixmap(pix.scaled(16, 16, Qt.KeepAspectRatio, Qt.SmoothTransformation)) 
         
         coin_p = ICON_DIR / "ic_coin.png"
         if coin_p.exists():
-            pix = QPixmap(str(coin_p.resolve())).scaled(22, 22, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            pix = QPixmap(str(coin_p.resolve())).scaled(16, 16, Qt.KeepAspectRatio, Qt.SmoothTransformation) 
             self.money_icon.setPixmap(pix)
         
         for key in self.status_rows:
@@ -278,19 +303,19 @@ class ControlPanel(QWidget):
             path = ICON_DIR / img_name
             if path.exists(): 
                 btn.setIcon(QIcon(str(path.resolve())))
-                btn.setIconSize(QSize(24, 24))
+                btn.setIconSize(QSize(16, 16)) 
 
         for btn, img_name in self.btn_widgets:
             path = app_icon_DIR / img_name
             if path.exists(): 
                 btn.setIcon(QIcon(str(path.resolve())))
-                btn.setIconSize(QSize(26, 26))
+                btn.setIconSize(QSize(18, 18)) 
 
     def _sync_ui(self):
         self.money_label.setText(str(int(self.state.money)))
         self.name_label.setText(self.state.pet_name)
         self.mood_label.setText(self.state.mood_label)
-        max_w = 215 # ✅ 동기화된 너비 수치
+        max_w = 150 
         
         for k, row_data in self.status_rows.items():
             gauge, _, _, val_lbl = row_data
@@ -300,14 +325,75 @@ class ControlPanel(QWidget):
             
         self.titlebar.title_label.setText(f"{self.state.pet_name} - Panel")
 
+    def _close_all_sub_windows(self, except_win=None):
+        for w in [self.home_window, self.job_window, self.study_window]:
+            if w and w != except_win and w.isVisible():
+                w.close()
+
+    def _sync_and_show_main_pet(self, sub_window):
+        other_open = False
+        for w in [self.home_window, self.job_window, self.study_window]:
+            if w and w != sub_window and w.isVisible():
+                other_open = True
+                break
+        
+        if not other_open:
+            sub_pet = getattr(sub_window, 'house_pet', getattr(sub_window, 'pet', None))
+            if sub_pet and self.pet:
+                if getattr(sub_pet, 'sleeping', False):
+                    self.pet.sleeping = True
+                    self.pet.sleep_end_at = sub_pet.sleep_end_at
+                    self.pet.set_mode("sleep", sec=max(0.1, sub_pet.sleep_end_at - time.time()))
+                else:
+                    self.pet.sleeping = False
+                    self.pet.set_mode("normal", sec=99999)
+            if self.pet:
+                self.pet.show()
+                self.pet.raise_()
+
+    def open_home(self):
+        self._close_all_sub_windows() 
+        is_s = False; s_end = 0
+        if self.pet: 
+            is_s = self.pet.sleeping; s_end = self.pet.sleep_end_at
+            self.pet.hide() 
+
+        if self.home_window is None:
+            self.home_window = HouseWindow(self.state, self.pet, self.windowIcon())
+            orig_c = self.home_window.closeEvent
+            self.home_window.closeEvent = lambda e: (self._sync_and_show_main_pet(self.home_window), orig_c(e))
+        
+        if is_s and hasattr(self.home_window, 'house_pet'):
+            h_p = self.home_window.house_pet
+            h_p.sleeping = True; h_p.sleep_end_at = s_end
+            h_p.set_mode("sleep", sec=max(0.1, s_end - time.time()))
+        
+        self.home_window.show(); self.home_window.raise_()
+
+    def open_job(self):
+        self._close_all_sub_windows()
+        if self.pet: self.pet.hide()
+        if self.job_window is None:
+            self.job_window = JobWindow(self.state, self.windowIcon())
+            orig_c = self.job_window.closeEvent
+            self.job_window.closeEvent = lambda e: (self._sync_and_show_main_pet(self.job_window), orig_c(e))
+        self.job_window.show(); self.job_window.raise_()
+
+    def open_study(self):
+        self._close_all_sub_windows()
+        if self.pet: self.pet.hide()
+        if self.study_window is None:
+            self.study_window = StudyWindow(self.state, self.windowIcon())
+            orig_c = self.study_window.closeEvent
+            self.study_window.closeEvent = lambda e: (self._sync_and_show_main_pet(self.study_window), orig_c(e))
+        self.study_window.show(); self.study_window.raise_()
+
     def open_settings(self):
         if not hasattr(self, 'settings_win') or self.settings_win is None:
             self.settings_win = SettingsWindow(self.state, self, self.windowIcon())
-        
         pos = self.geometry().topRight()
         self.settings_win.move(pos.x() + 10, pos.y())
-        self.settings_win.show()
-        self.settings_win.raise_()
+        self.settings_win.show(); self.settings_win.raise_()
 
     def minimize_to_tray(self): self.hide()
     def quit_app(self): QApplication.instance().quit()
@@ -318,9 +404,20 @@ class ControlPanel(QWidget):
         self.tray.setContextMenu(m); self.tray.show()
     def toggle_theme(self): self.apply_theme("dark" if self.theme == "pink" else "pink")
 
-    # ----------------------------------------------------
-    # ✅ 펫 상호작용 코어 로직
-    # ----------------------------------------------------
+    def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton: self._old_pos = e.globalPosition().toPoint()
+    def mouseMoveEvent(self, e):
+        if hasattr(self, '_old_pos'):
+            delta = e.globalPosition().toPoint() - self._old_pos
+            self.move(self.x() + delta.x(), self.y() + delta.y())
+            self._old_pos = e.globalPosition().toPoint()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Escape:
+            self.minimize_to_tray()
+        else:
+            super().keyPressEvent(event)
+
     def _active_pet_for_chat(self):
         if self.home_window and self.home_window.isVisible() and hasattr(self.home_window, 'house_pet'):
             return self.home_window.house_pet
@@ -331,49 +428,38 @@ class ControlPanel(QWidget):
         return self.pet
 
     def _format_stat(self, stat_name: str, change_val: int) -> str:
-        f_style = "font-size:14px; font-weight:bold;" 
+        f_style = "font-size:11px; font-weight:bold;" 
         if change_val > 0:
-            return f"<span style='color:#FF5E5E; {f_style}'>▲ {stat_name} {change_val}</span>"
+            return f"<span style='color:#FF5E5E; {f_style}'>▲{stat_name} {change_val}</span>"
         elif change_val < 0:
-            return f"<span style='color:#4A90E2; {f_style}'>▼ {stat_name} {abs(change_val)}</span>"
+            return f"<span style='color:#4A90E2; {f_style}'>▼{stat_name} {abs(change_val)}</span>"
         return ""
 
     def _delayed_pet_response(self, target, pet_msg, stats_html, anim_callback):
-        stat_box = (
-            f"<table width='100%' cellpadding='0' cellspacing='4'><tr><td align='center'>"
-            f"<span style='background-color: rgba(255, 160, 209, 0.15);padding: 10px 20px;'>"
-            f"{stats_html}</span>"
-            f"</td></tr></table>"
-        )
-        log_html = f"<b>{self.state.pet_name}</b> : {pet_msg}{stat_box}"
+        stat_box = f"<br>&nbsp;&nbsp;└ <span style='background-color: rgba(255, 160, 209, 0.15); padding: 1px 4px;'>{stats_html}</span>" if stats_html else ""
         
-        # ✅ 채팅 로그 주석 처리 (에러 방지용)
-        # if hasattr(self, 'chat_log'):
-        #     self.chat_log.append(log_html)
-        #     self.chat_log.verticalScrollBar().setValue(self.chat_log.verticalScrollBar().maximum())
+        if hasattr(self, 'chat_log'):
+            # 마진을 줄이고 append
+            self.chat_log.append(f"<div style='margin-bottom: 4px; line-height: 1.2;'><b>{self.state.pet_name}</b> : {pet_msg}{stat_box}</div>")
+            # 스크롤 최하단 자동 이동
+            self.chat_log.verticalScrollBar().setValue(self.chat_log.verticalScrollBar().maximum())
         
-        if anim_callback: 
-            anim_callback()
-            
-        if target:
-            # chat_log 객체 대신 None 전달하여 말풍선만 출력되게 처리
-            trigger_pet_action_bubble(target, getattr(self, 'chat_log', None), [pet_msg])
+        if anim_callback: anim_callback()
+        if target: trigger_pet_action_bubble(target, getattr(self, 'chat_log', None), [pet_msg])
 
     def handle_interaction(self, user_action_msg, normal_logic):
         target = self._active_pet_for_chat()
         
-        # ✅ 채팅 로그 주석 처리
-        # if hasattr(self, 'chat_log'):
-        #     self.chat_log.append(f"<span style='color:#aaaaaa;'><b>{self.user_name}</b> : {user_action_msg}</span>")
-        #     self.chat_log.verticalScrollBar().setValue(self.chat_log.verticalScrollBar().maximum())
+        if hasattr(self, 'chat_log'):
+            self.chat_log.append(f"<div style='margin-bottom: 2px; color: #888888;'><b>{self.user_name}</b> : {user_action_msg}</div>")
+            self.chat_log.verticalScrollBar().setValue(self.chat_log.verticalScrollBar().maximum())
 
         is_sleeping = getattr(target, "sleeping", False) or (hasattr(target, "sleep_end_at") and time.time() < target.sleep_end_at)
-
+        
         def response():
             if is_sleeping:
                 dec_mood = -random.randint(5, 15)
                 self.state.mood = clamp(self.state.mood + dec_mood)
-                msg = random.choice(["음냐... 더 잘래...", "아 왜 깨워...", "ZZZ... (깊은 잠)"])
                 stats_html = self._format_stat('기분', dec_mood)
                 
                 def sleep_anim():
@@ -382,10 +468,10 @@ class ControlPanel(QWidget):
                         remain = getattr(target, "sleep_end_at", time.time() + 5) - time.time()
                         target.set_mode("sleep", sec=max(2.0, remain))
                 
-                self._delayed_pet_response(target, msg, stats_html, sleep_anim)
+                self._delayed_pet_response(target, random.choice(["음냐...", "아 왜 깨워...", "ZZZ..."]), stats_html, sleep_anim)
             else:
                 normal_logic(target)
-
+                
         QTimer.singleShot(100, response)
 
     def feed_pet(self):
@@ -396,7 +482,7 @@ class ControlPanel(QWidget):
             self.state.mood = clamp(self.state.mood + inc_mood)
             
             msg = random.choice(["냠냠! 맛있어!", "배부르다 찍!", "밥 최고!"])
-            stats_html = f"{self._format_stat('포만감', inc_hunger)} &nbsp;&nbsp; {self._format_stat('기분', inc_mood)}"
+            stats_html = f"{self._format_stat('포만감', inc_hunger)} &nbsp; {self._format_stat('기분', inc_mood)}"
             
             def anim():
                 if hasattr(target, "trigger_eat_visual"): target.trigger_eat_visual()
@@ -414,7 +500,7 @@ class ControlPanel(QWidget):
             self.state.fun = clamp(self.state.fun + inc_fun)
             
             msg = random.choice(["헤헤 기분 좋아 💗", "쫑알쫑알!", "따뜻해..."])
-            stats_html = f"{self._format_stat('기분', inc_mood)} &nbsp;&nbsp; {self._format_stat('재미', inc_fun)}"
+            stats_html = f"{self._format_stat('기분', inc_mood)} &nbsp; {self._format_stat('재미', inc_fun)}"
             
             def anim():
                 if hasattr(target, "start_shake"): target.start_shake(sec=0.4, strength=2)
@@ -436,11 +522,9 @@ class ControlPanel(QWidget):
             self.state.mood = clamp(self.state.mood + inc_mood)
             
             msg = random.choice(["야호! 재밌다!", "우다다다!", "한 번 더 놀자!"])
-            stats_html = (
-                f"{self._format_stat('에너지', dec_energy)} &nbsp;&nbsp; "
-                f"{self._format_stat('재미', inc_fun)} &nbsp;&nbsp; "
-                f"{self._format_stat('기분', inc_mood)}"
-            )
+            stats_html = (f"{self._format_stat('에너지', dec_energy)} &nbsp; "
+                          f"{self._format_stat('재미', inc_fun)} &nbsp; "
+                          f"{self._format_stat('기분', inc_mood)}")
             
             def anim():
                 if hasattr(target, "do_jump"): target.do_jump(strength=14)
@@ -453,136 +537,29 @@ class ControlPanel(QWidget):
             
         self.handle_interaction("🎮 같이 놀았다!", normal_logic)
 
-    def mousePressEvent(self, e):
-        if e.button() == Qt.LeftButton: self._old_pos = e.globalPosition().toPoint()
-    def mouseMoveEvent(self, e):
-        if hasattr(self, '_old_pos'):
-            delta = e.globalPosition().toPoint() - self._old_pos
-            self.move(self.x() + delta.x(), self.y() + delta.y())
-            self._old_pos = e.globalPosition().toPoint()
 
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Escape:
-            self.minimize_to_tray()
-        else:
-            super().keyPressEvent(event)
-
-    # -------------------------
-    # 창 관리 및 펫 상태 동기화
-    # -------------------------
-    def _close_all_sub_windows(self, except_win=None):
-        """✅ 창 중복 실행 방지 헬퍼"""
-        for w in [self.home_window, self.job_window, self.study_window]:
-            if w and w != except_win and w.isVisible():
-                w.close()
-
-    def _sync_and_show_main_pet(self, sub_window):
-        """하위 창이 닫힐 때 펫 상태 메인 복사 및 표시"""
-        # 다른 하위 창이 하나라도 열려 있으면 메인 펫 부활 생략 (중복 방지)
-        other_open = False
-        for w in [self.home_window, self.job_window, self.study_window]:
-            if w and w != sub_window and w.isVisible():
-                other_open = True
-                break
-
-        if not other_open:
-            sub_pet = getattr(sub_window, 'house_pet', getattr(sub_window, 'pet', None))
-            if sub_pet and self.pet:
-                if getattr(sub_pet, 'sleeping', False):
-                    self.pet.sleeping = True
-                    self.pet.sleep_end_at = sub_pet.sleep_end_at
-                    remain = max(0.1, sub_pet.sleep_end_at - time.time())
-                    self.pet.set_mode("sleep", sec=remain)
-                else:
-                    self.pet.sleeping = False
-                    self.pet.set_mode("normal", sec=99999)
-            
-            if self.pet:
-                self.pet.show()
-                self.pet.raise_()
-
-    def open_home(self):
-        self._close_all_sub_windows() # 겹침 방지
-        is_sleeping = False
-        sleep_end = 0
-        if self.pet:
-            is_sleeping = self.pet.sleeping
-            sleep_end = self.pet.sleep_end_at
-            self.pet.hide() 
-
-        if self.home_window is None:
-            self.home_window = HouseWindow(self.state, self.pet, self.windowIcon())
-            orig_close = self.home_window.closeEvent
-            def close_wrapper(e):
-                self._sync_and_show_main_pet(self.home_window)
-                orig_close(e)
-            self.home_window.closeEvent = close_wrapper
-        
-        if is_sleeping and hasattr(self.home_window, 'house_pet'):
-            h_pet = self.home_window.house_pet
-            h_pet.sleeping = True
-            h_pet.sleep_end_at = sleep_end
-            remain = max(0.1, sleep_end - time.time())
-            h_pet.set_mode("sleep", sec=remain)
-
-        self.home_window.show()
-        self.home_window.raise_()
-        self.home_window.activateWindow()
-
-    def open_job(self):
-        self._close_all_sub_windows() # 겹침 방지
-        if self.pet: self.pet.hide()
-        if self.job_window is None:
-            self.job_window = JobWindow(self.state, self.windowIcon())
-            orig_close = self.job_window.closeEvent
-            def close_wrapper(e):
-                self._sync_and_show_main_pet(self.job_window)
-                orig_close(e)
-            self.job_window.closeEvent = close_wrapper
-        self.job_window.show(); self.job_window.raise_(); self.job_window.activateWindow()
-
-    def open_study(self):
-        self._close_all_sub_windows() # 겹침 방지
-        if self.pet: self.pet.hide()
-        if self.study_window is None:
-            self.study_window = StudyWindow(self.state, self.windowIcon())
-            orig_close = self.study_window.closeEvent
-            def close_wrapper(e):
-                self._sync_and_show_main_pet(self.study_window)
-                orig_close(e)
-            self.study_window.closeEvent = close_wrapper
-        self.study_window.show(); self.study_window.raise_(); self.study_window.activateWindow()
-
-    def open_name_change(self):
-        if self.name_window is None:
-            self.name_window = NameWindow(self.state, self.windowIcon())
-        self.name_window.show(); self.name_window.raise_()
-
-# -------------------------
-# 4. 설정창
-# -------------------------
 class SettingsWindow(StyledWidget):
     def __init__(self, state: PetState, panel: "ControlPanel", icon: QIcon):
         super().__init__()
         self.state, self.panel = state, panel
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
-        self.setFixedSize(300, 420)
+        self.setFixedSize(300, 360) 
         self.setObjectName("SettingsWindow")
         
         lay = QVBoxLayout(self)
         lay.setContentsMargins(20, 20, 20, 20)
         lay.setSpacing(10)
         
-        title = QLabel("⚙️ 설정"); title.setStyleSheet("font-size: 18px; font-weight: bold; color: white;")
+        title = QLabel("⚙️ 설정"); title.setStyleSheet("font-size: 16px; font-weight: bold; color: white;")
         lay.addWidget(title)
 
         lay.addWidget(QLabel("👤 내 이름 (사용자)"))
-        self.user_input = QTextEdit(); self.user_input.setFixedHeight(35)
+        self.user_input = QTextEdit(); self.user_input.setFixedHeight(30)
         self.user_input.setText(self.panel.user_name)
         lay.addWidget(self.user_input)
 
         lay.addWidget(QLabel("🐾 펫 이름"))
-        self.pet_input = QTextEdit(); self.pet_input.setFixedHeight(35)
+        self.pet_input = QTextEdit(); self.pet_input.setFixedHeight(30)
         self.pet_input.setText(self.state.pet_name)
         lay.addWidget(self.pet_input)
         
@@ -595,18 +572,15 @@ class SettingsWindow(StyledWidget):
         lay.addLayout(theme_lay)
 
         lay.addStretch()
-        
         save_btn = QPushButton("설정 저장 및 닫기")
-        save_btn.setFixedHeight(40)
+        save_btn.setFixedHeight(36)
         save_btn.clicked.connect(self.save_settings)
         lay.addWidget(save_btn)
 
     def save_settings(self):
-        new_user = self.user_input.toPlainText().strip()
-        new_pet = self.pet_input.toPlainText().strip()
-        
-        if new_user: self.panel.user_name = new_user
-        if new_pet: self.state.pet_name = new_pet
-        
+        new_u = self.user_input.toPlainText().strip()
+        new_p = self.pet_input.toPlainText().strip()
+        if new_u: self.panel.user_name = new_u
+        if new_p: self.state.pet_name = new_p
         self.panel._sync_ui() 
         self.close()
