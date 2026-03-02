@@ -3,7 +3,7 @@ main.py - 앱 진입점
 """
 import sys
 
-from PySide6.QtGui import QFontDatabase, QIcon
+from PySide6.QtGui import QFontDatabase, QIcon,QFont
 from PySide6.QtWidgets import QApplication
 
 from config import ASSET_DIR, FURNITURE_JSON_PATH, QSS_PATH, app_icon_PATH
@@ -15,7 +15,8 @@ from windows.control_panel import ControlPanel
 
 def main():
     app = QApplication(sys.argv)
-
+    font = QFont("Malgun Gothic", 10) # 또는 "Pretendard", "NanumGothic"
+    app.setFont(font)
     # 앱 아이콘
     app_icon = QIcon(str(app_icon_PATH)) if app_icon_PATH.exists() else None
     if app_icon:
