@@ -61,7 +61,7 @@ class TitleBar(StyledWidget):
         
         self.sys_icon = QLabel()
         self.sys_icon.setObjectName("SystemIcon")
-        self.sys_icon.setFixedSize(16, 16) 
+        self.sys_icon.setFixedSize(20, 20) # ✅ 16에서 20으로 변경
         lay.addWidget(self.sys_icon)
         
         self.title_label = QLabel("라이미 - Panel")
@@ -132,7 +132,7 @@ class ControlPanel(QWidget):
         h_lay.setContentsMargins(10, 0, 10, 0) 
         h_lay.setSpacing(8)
         
-        self.money_icon = QLabel(); self.money_icon.setFixedSize(24, 24) 
+        self.money_icon = QLabel(); self.money_icon.setFixedSize(20, 20)
         self.money_label = QLabel("0"); self.money_label.setObjectName("MoneyLabel")
         self.money_label.setStyleSheet("font-size: 11px;") 
 
@@ -174,15 +174,14 @@ class ControlPanel(QWidget):
         chat_lay.addWidget(self.chat_log)
         self.root.addWidget(chat_bg_widget, 0, Qt.AlignCenter)
 
-        # 스탯창 (280x132 유지, 내부 비율 조정)
+        # 스탯창 (전체 높이 120 유지)
         self.status_container = StyledWidget()
         self.status_container.setObjectName("PanelStatus") 
-        self.status_container.setFixedSize(280, 114) 
+        self.status_container.setFixedSize(280, 120) 
         
         status_vbox = QVBoxLayout(self.status_container)
-        # (좌, 상, 우, 하) 위아래 여백을 8에서 4로 반토막 내기
-        status_vbox.setContentsMargins(0,0,0,0) 
-        status_vbox.setSpacing(0)
+        status_vbox.setContentsMargins(8, 4, 8, 4) 
+        status_vbox.setSpacing(0) 
 
         self.status_rows = {}
         status_info = [
@@ -193,34 +192,36 @@ class ControlPanel(QWidget):
         ]
 
         for key, kr_name, icon_name, obj_name in status_info:
-            row_widget = StyledWidget()
+            # ✅ StyledWidget -> QWidget으로 변경하여 배경 중복 렌더링(가로줄) 제거
+            row_widget = QWidget() 
             row_widget.setObjectName("StatusRow")
-            row_widget.setFixedSize(264, 28) # ✅ 높이를 28로 키워 여유 공간 확보
+            row_widget.setFixedSize(264, 28) 
             row_lay = QHBoxLayout(row_widget)
             
-            row_lay.setContentsMargins(0, 0, 0, 0) # 내부 마진 완전 제거
-            row_lay.setSpacing(6) 
+            row_lay.setContentsMargins(0, 0, 0, 0) 
+            row_lay.setSpacing(4) # ✅ 아이콘과 텍스트 사이 기본 간격 축소
 
             st_icon = QLabel(); st_icon.setObjectName("StatusIcon")
-            st_icon.setFixedSize(24, 24) # ✅ 아이콘 크기 24x24로 확대
+            st_icon.setFixedSize(20, 20) # ✅ 16에서 20으로 변경
             st_icon.setAlignment(Qt.AlignCenter)
 
             kr_lbl = QLabel(kr_name); kr_lbl.setObjectName("StatusNameLabel")
-            kr_lbl.setFixedWidth(36) 
-            kr_lbl.setAlignment(Qt.AlignCenter)
-            kr_lbl.setStyleSheet("font-size: 11px;")
+            kr_lbl.setFixedWidth(34) # ✅ 너비를 살짝 줄여 아이콘에 밀착시킴
+            # ✅ 우측 정렬 적용
+            kr_lbl.setAlignment(Qt.AlignLeft | Qt.AlignVCenter) 
+            kr_lbl.setStyleSheet("font-size: 11px; background: transparent;")
             
-            track_lbl = QLabel(); track_lbl.setObjectName("BarTrack")
-            track_lbl.setFixedSize(180, 18) # ✅ 게이지 바 길이를 180으로 연장
-            gauge_lbl = QLabel(track_lbl); gauge_lbl.setObjectName(obj_name)
-            gauge_lbl.setFixedSize(0, 18)
+            track_lbl = QLabel(); track_lbl.setObjectName("BarTrack"); track_lbl.setFixedSize(180, 18) 
+            gauge_lbl = QLabel(track_lbl); gauge_lbl.setObjectName(obj_name); gauge_lbl.setFixedSize(0, 18)
             
             val_lbl = QLabel(track_lbl)
-            val_lbl.setFixedSize(180, 18) # ✅ 텍스트 영역도 180으로 연장
+            val_lbl.setFixedSize(180, 18) 
             val_lbl.setAlignment(Qt.AlignCenter)
             val_lbl.setStyleSheet("color: white; font-weight: bold; font-size: 10px; background: transparent;")
 
-            row_lay.addWidget(st_icon); row_lay.addWidget(kr_lbl)
+            row_lay.addWidget(st_icon)
+            row_lay.addWidget(kr_lbl)
+            row_lay.addSpacing(4) # ✅ 텍스트와 게이지 바 사이의 여백 추가
             row_lay.addWidget(track_lbl)
             row_lay.addStretch(1) 
             
@@ -307,19 +308,21 @@ class ControlPanel(QWidget):
         chat_img = mapping.get("panel_chat", "")
         status_img = mapping.get("panel_status", "")
         if Path(chat_img).exists():
-            style += f"\n#ChatLog {{ border-image: url('{chat_img}') 8 8 8 8; background-color: transparent; }}"
+            style += f"\n#ChatLog {{ border-image: url('{chat_img}') 0 0 0 0 stretch stretch; background-color: transparent; }}"
         if Path(status_img).exists():
-            style += f"\n#PanelStatus {{ border-image: url('{status_img}') 10 10 10 10; background-color: transparent; }}"
+            style += f"\n#PanelStatus {{ border-image: url('{status_img}') 0 0 0 0 stretch stretch; background-color: transparent; }}"
         
         self.setStyleSheet(style)
         self._update_icons()
+
 
     def _update_icons(self):
         sys_p = self.current_icon_dir / "ic_main.png" 
         if sys_p.exists():
             pix = QPixmap(str(sys_p.resolve()))
             self.titlebar.sys_icon.setScaledContents(True) 
-            self.titlebar.sys_icon.setPixmap(pix.scaled(16, 16, Qt.KeepAspectRatio, Qt.SmoothTransformation)) 
+            # ✅ 20x20 및 SmoothTransformation 적용
+            self.titlebar.sys_icon.setPixmap(pix.scaled(20, 20, Qt.KeepAspectRatio, Qt.SmoothTransformation)) 
         
         for btn, img_name in [(self.titlebar.set_btn, "ic_setting.png"), 
                               (self.titlebar.min_btn, "ic_min.png"), 
@@ -327,18 +330,18 @@ class ControlPanel(QWidget):
             path = self.current_icon_dir / img_name
             if path.exists():
                 btn.setIcon(QIcon(str(path.resolve())))
-                btn.setIconSize(QSize(24, 24))
+                btn.setIconSize(QSize(20, 20)) # ✅ 아이콘 렌더링 20x20
 
         coin_p = self.current_icon_dir / "ic_coin.png"
         if coin_p.exists():
-            pix = QPixmap(str(coin_p.resolve())).scaled(24, 24, Qt.KeepAspectRatio, Qt.SmoothTransformation) 
+            pix = QPixmap(str(coin_p.resolve())).scaled(20, 20, Qt.KeepAspectRatio, Qt.SmoothTransformation) 
             self.money_icon.setPixmap(pix)
         
         for key in self.status_rows:
             gauge, st_icon, img_name, val_lbl = self.status_rows[key]
             path = self.current_icon_dir / img_name
             if path.exists(): 
-                pix = QPixmap(str(path.resolve())).scaled(24, 24, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                pix = QPixmap(str(path.resolve())).scaled(20, 20, Qt.KeepAspectRatio, Qt.SmoothTransformation)
                 st_icon.setPixmap(pix)
 
         for btn, img_name in self.btn_widgets:
@@ -348,7 +351,7 @@ class ControlPanel(QWidget):
                 
             if path.exists(): 
                 btn.setIcon(QIcon(str(path.resolve())))
-                btn.setIconSize(QSize(18, 18)) 
+                btn.setIconSize(QSize(20, 20)) # ✅ 하단 버튼 아이콘도 20x20 통일
 
     def _sync_ui(self):
         self.money_label.setText(str(int(self.state.money)))
