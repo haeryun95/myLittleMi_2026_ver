@@ -104,7 +104,7 @@ class ControlPanel(QWidget):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setFixedSize(300, 380)
-        self.setWindowOpacity(0.9) 
+        self.setWindowOpacity(0.95) 
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
