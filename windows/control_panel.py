@@ -20,7 +20,7 @@ from windows.job_window import JobWindow
 from windows.study_window import StudyWindow
 
 # -------------------------
-# Helpers (경로 구조 개편)
+# Helpers
 # -------------------------
 def _project_root() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -57,7 +57,7 @@ class TitleBar(StyledWidget):
         
         lay = QHBoxLayout(self)
         lay.setContentsMargins(10, 0, 10, 0) 
-        lay.setSpacing(4) 
+        lay.setSpacing(6) 
         
         self.sys_icon = QLabel()
         self.sys_icon.setObjectName("SystemIcon")
@@ -71,14 +71,16 @@ class TitleBar(StyledWidget):
         
         lay.addStretch(1)
         
-        self.set_btn = QPushButton(); self.set_btn.setObjectName("SettingButton")
-        self.min_btn = QPushButton(); self.min_btn.setObjectName("MinButton")
-        self.close_btn = QPushButton(); self.close_btn.setObjectName("CloseButton")
+        self.set_btn = QPushButton()
+        self.min_btn = QPushButton()
+        self.close_btn = QPushButton()
         
         for btn, slot in [(self.set_btn, self.panel.open_settings), 
                           (self.min_btn, self.panel.minimize_to_tray), 
                           (self.close_btn, self.panel.quit_app)]:
-            btn.setFixedSize(24, 24) 
+            btn.setFixedSize(20, 20) 
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet("background: transparent; border: none;") 
             btn.clicked.connect(slot)
             lay.addWidget(btn)
 
@@ -90,7 +92,7 @@ class ControlPanel(QWidget):
         super().__init__()
         self.state, self.pet = state, pet
         self.theme = default_theme
-        self.user_name = "고요"
+        self.user_name = "나"
         
         self.home_window = None
         self.job_window = None
@@ -102,6 +104,7 @@ class ControlPanel(QWidget):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setFixedSize(300, 380)
+        self.setWindowOpacity(0.9) 
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -118,18 +121,18 @@ class ControlPanel(QWidget):
 
         content_widget = QWidget()
         self.root = QVBoxLayout(content_widget)
-        self.root.setContentsMargins(10, 4, 10, 6) 
-        self.root.setSpacing(0)
+        self.root.setContentsMargins(10, 2, 10, 2) 
+        self.root.setSpacing(4) 
         frame_lay.addWidget(content_widget)
 
         self.header_widget = StyledWidget()
         self.header_widget.setObjectName("PanelHeader")
-        self.header_widget.setFixedHeight(36) 
+        self.header_widget.setFixedSize(280, 36) 
         h_lay = QHBoxLayout(self.header_widget)
         h_lay.setContentsMargins(10, 0, 10, 0) 
         h_lay.setSpacing(8)
         
-        self.money_icon = QLabel(); self.money_icon.setFixedSize(16, 16) 
+        self.money_icon = QLabel(); self.money_icon.setFixedSize(24, 24) 
         self.money_label = QLabel("0"); self.money_label.setObjectName("MoneyLabel")
         self.money_label.setStyleSheet("font-size: 11px;") 
 
@@ -147,12 +150,11 @@ class ControlPanel(QWidget):
         h_lay.addWidget(self.mood_label)
         
         self.root.addWidget(self.header_widget)
-        self.root.addSpacing(6)
 
-        # ✅ 채팅창
+        # 채팅창
         chat_bg_widget = StyledWidget()
         chat_bg_widget.setObjectName("ChatLog") 
-        chat_bg_widget.setFixedHeight(85)
+        chat_bg_widget.setFixedSize(280, 85) 
         
         chat_lay = QVBoxLayout(chat_bg_widget)
         chat_lay.setContentsMargins(8, 6, 2, 6) 
@@ -170,16 +172,17 @@ class ControlPanel(QWidget):
         self.chat_log.viewport().setAttribute(Qt.WA_TranslucentBackground, True)
         
         chat_lay.addWidget(self.chat_log)
-        self.root.addWidget(chat_bg_widget)
+        self.root.addWidget(chat_bg_widget, 0, Qt.AlignCenter)
 
-        # ✅ 스탯창: 단순 QWidget에서 StyledWidget으로 변경하여 배경 할당
+        # 스탯창 (280x132 유지, 내부 비율 조정)
         self.status_container = StyledWidget()
-        self.status_container.setObjectName("PanelStatus") # ui.qss 에서 타겟팅
-        self.status_container.setFixedSize(292, 132) 
+        self.status_container.setObjectName("PanelStatus") 
+        self.status_container.setFixedSize(280, 114) 
         
         status_vbox = QVBoxLayout(self.status_container)
-        status_vbox.setContentsMargins(6, 8, 6, 8) 
-        status_vbox.setSpacing(4) 
+        # (좌, 상, 우, 하) 위아래 여백을 8에서 4로 반토막 내기
+        status_vbox.setContentsMargins(0,0,0,0) 
+        status_vbox.setSpacing(0)
 
         self.status_rows = {}
         status_info = [
@@ -192,42 +195,45 @@ class ControlPanel(QWidget):
         for key, kr_name, icon_name, obj_name in status_info:
             row_widget = StyledWidget()
             row_widget.setObjectName("StatusRow")
-            row_widget.setFixedSize(280, 26) 
+            row_widget.setFixedSize(264, 28) # ✅ 높이를 28로 키워 여유 공간 확보
             row_lay = QHBoxLayout(row_widget)
             
-            row_lay.setContentsMargins(5, 0, 5, 0) 
-            row_lay.setSpacing(5) 
+            row_lay.setContentsMargins(0, 0, 0, 0) # 내부 마진 완전 제거
+            row_lay.setSpacing(6) 
 
-            st_btn = QPushButton(); st_btn.setObjectName("HeaderIconButton")
-            st_btn.setFixedSize(20, 20) 
+            st_icon = QLabel(); st_icon.setObjectName("StatusIcon")
+            st_icon.setFixedSize(24, 24) # ✅ 아이콘 크기 24x24로 확대
+            st_icon.setAlignment(Qt.AlignCenter)
+
             kr_lbl = QLabel(kr_name); kr_lbl.setObjectName("StatusNameLabel")
             kr_lbl.setFixedWidth(36) 
             kr_lbl.setAlignment(Qt.AlignCenter)
             kr_lbl.setStyleSheet("font-size: 11px;")
             
-            track_lbl = QLabel(); track_lbl.setObjectName("BarTrack"); track_lbl.setFixedSize(150, 18) 
-            gauge_lbl = QLabel(track_lbl); gauge_lbl.setObjectName(obj_name); gauge_lbl.setFixedSize(0, 18)
+            track_lbl = QLabel(); track_lbl.setObjectName("BarTrack")
+            track_lbl.setFixedSize(180, 18) # ✅ 게이지 바 길이를 180으로 연장
+            gauge_lbl = QLabel(track_lbl); gauge_lbl.setObjectName(obj_name)
+            gauge_lbl.setFixedSize(0, 18)
             
             val_lbl = QLabel(track_lbl)
-            val_lbl.setFixedSize(150, 18) 
+            val_lbl.setFixedSize(180, 18) # ✅ 텍스트 영역도 180으로 연장
             val_lbl.setAlignment(Qt.AlignCenter)
             val_lbl.setStyleSheet("color: white; font-weight: bold; font-size: 10px; background: transparent;")
 
-            row_lay.addWidget(st_btn); row_lay.addWidget(kr_lbl)
+            row_lay.addWidget(st_icon); row_lay.addWidget(kr_lbl)
             row_lay.addWidget(track_lbl)
             row_lay.addStretch(1) 
             
             status_vbox.addWidget(row_widget, 0, Qt.AlignCenter)
-            self.status_rows[key] = (gauge_lbl, st_btn, icon_name, val_lbl)
+            self.status_rows[key] = (gauge_lbl, st_icon, icon_name, val_lbl)
 
         self.root.addWidget(self.status_container, 0, Qt.AlignCenter)
-        self.root.addSpacing(10)
 
         self.btn_widgets = [] 
         btn_container = QWidget(); btn_container.setFixedWidth(280) 
         btn_grid = QGridLayout(btn_container)
         btn_grid.setContentsMargins(0, 0, 0, 0) 
-        btn_grid.setSpacing(6) 
+        btn_grid.setSpacing(4) 
         
         self.actions_info = [
             ("밥주기", "feed.png", self.feed_pet), ("대화", "pet.png", self.pet_pet),
@@ -237,18 +243,17 @@ class ControlPanel(QWidget):
         
         for i, (txt, img, func) in enumerate(self.actions_info):
             btn = QPushButton(txt); btn.setObjectName("MenuButton")
-            btn.setFixedSize(90, 36) 
+            btn.setFixedSize(84, 28) 
             btn.clicked.connect(func)
             btn_grid.addWidget(btn, i // 3, i % 3)
             self.btn_widgets.append((btn, img))
             
         self.root.addWidget(btn_container, 0, Qt.AlignCenter)
-        self.root.addStretch(1)
 
         self.guide_label = QLabel("ESC = 패널 닫기")
         self.guide_label.setAlignment(Qt.AlignCenter)
-        self.guide_label.setStyleSheet("color: #fff; font-size: 11px; font-weight: bold; margin-bottom: 2px;") 
-        self.root.addWidget(self.guide_label)
+        self.guide_label.setStyleSheet("color: #fff; font-size: 10px; font-weight: bold;") 
+        self.root.addWidget(self.guide_label, 0, Qt.AlignCenter)
 
         for btn in self.findChildren(QPushButton):
             btn.setCursor(Qt.PointingHandCursor)
@@ -258,37 +263,53 @@ class ControlPanel(QWidget):
         self.ui_timer = QTimer(self); self.ui_timer.timeout.connect(self._sync_ui); self.ui_timer.start(250)
         self._init_tray(app_icon)
 
+        self.chat_log.append("<div style='color:#aaaaaa;'>[시스템] 패널이 준비되었습니다.</div>")
+
     def apply_theme(self, theme_name: str):
         self.theme = theme_name
         tp = THEME_BASE_DIR / self.theme
         ui_dir = tp / "ui"
-        self.current_icon_dir = tp / "icon" # 아이콘 업데이트 시 참조용
+        self.current_icon_dir = tp / "icon" 
         
-        # ui.qss가 ui 폴더 안에 있는지, 테마 최상단에 있는지 유동적으로 확인
         qss_file = ui_dir / "ui.qss"
         if not qss_file.exists():
             qss_file = tp / "ui.qss"
-        if not qss_file.exists(): return
+            
+        if not qss_file.exists(): 
+            print(f"❌ [에러] QSS 파일을 찾을 수 없어 테마 적용 실패! 경로: {qss_file}")
+            return
         
         with open(qss_file, "r", encoding="utf-8") as f: style = f.read()
         
         mapping = {
-            "window_frame": _p(ui_dir / "window_frame.png"), "titlebar_bg": _p(ui_dir / "window_titlebar.png"),
-            "panel_header": _p(ui_dir / "panel_header.png"), "panel_status": _p(ui_dir / "panel_status.png"),
+            "window_frame": _p(ui_dir / "window_frame.png"), 
+            "titlebar_bg": _p(ui_dir / "window_titlebar.png"),
+            "panel_header": _p(ui_dir / "panel_header.png"), 
+            "panel_status": _p(ui_dir / "panel_status.png"),
             "panel_chat": _p(ui_dir / "panel_chat.png"), 
             "btn_m": _p(ui_dir / "btn_m.png"), 
             "btn_m_press": _p(ui_dir / "btn_m_press.png"), 
-            "btn_ic": _p(ui_dir / "btn_ic.png"), "ic_setting": _p(self.current_icon_dir / "ic_setting.png"), 
-            "ic_min": _p(self.current_icon_dir / "ic_min.png"), "ic_close": _p(self.current_icon_dir / "ic_close.png"), 
-            "btn_close_hover": _p(ui_dir / "btn_close_hover.png"), "bar_track": _p(ui_dir / "bar_track.png"),
-            "bar_track_fun": _p(ui_dir / "bar_track_fun.png"), "bar_track_mood": _p(ui_dir / "bar_track_mood.png"),
-            "bar_track_hunger": _p(ui_dir / "bar_track_hunger.png"), "bar_track_energy": _p(ui_dir / "bar_track_energy.png"),
-            "text_color": "#ffffff" if self.theme == "dark" else "#333333"
+            "btn_ic": _p(ui_dir / "btn_ic.png"), 
+            "btn_close_hover": _p(ui_dir / "btn_close_hover.png"), 
+            "bar_track": _p(ui_dir / "bar_track.png"),
+            "bar_track_fun": _p(ui_dir / "bar_track_fun.png"), 
+            "bar_track_mood": _p(ui_dir / "bar_track_mood.png"),
+            "bar_track_hunger": _p(ui_dir / "bar_track_hunger.png"), 
+            "bar_track_energy": _p(ui_dir / "bar_track_energy.png")
         }
-        for k, v in mapping.items(): style = style.replace(f"{{{k}}}", v)
+
+        for k, v in mapping.items(): 
+            style = style.replace(f"{{{k}}}", v)
         
         text_color = "#ffffff" if self.theme == "dark" else "#333333"
         style += f"\n#ChatText {{ color: {text_color}; font-size: 11px; background: transparent; border: none; }}"
+        
+        chat_img = mapping.get("panel_chat", "")
+        status_img = mapping.get("panel_status", "")
+        if Path(chat_img).exists():
+            style += f"\n#ChatLog {{ border-image: url('{chat_img}') 8 8 8 8; background-color: transparent; }}"
+        if Path(status_img).exists():
+            style += f"\n#PanelStatus {{ border-image: url('{status_img}') 10 10 10 10; background-color: transparent; }}"
         
         self.setStyleSheet(style)
         self._update_icons()
@@ -300,21 +321,31 @@ class ControlPanel(QWidget):
             self.titlebar.sys_icon.setScaledContents(True) 
             self.titlebar.sys_icon.setPixmap(pix.scaled(16, 16, Qt.KeepAspectRatio, Qt.SmoothTransformation)) 
         
+        for btn, img_name in [(self.titlebar.set_btn, "ic_setting.png"), 
+                              (self.titlebar.min_btn, "ic_min.png"), 
+                              (self.titlebar.close_btn, "ic_close.png")]:
+            path = self.current_icon_dir / img_name
+            if path.exists():
+                btn.setIcon(QIcon(str(path.resolve())))
+                btn.setIconSize(QSize(24, 24))
+
         coin_p = self.current_icon_dir / "ic_coin.png"
         if coin_p.exists():
-            pix = QPixmap(str(coin_p.resolve())).scaled(16, 16, Qt.KeepAspectRatio, Qt.SmoothTransformation) 
+            pix = QPixmap(str(coin_p.resolve())).scaled(24, 24, Qt.KeepAspectRatio, Qt.SmoothTransformation) 
             self.money_icon.setPixmap(pix)
         
         for key in self.status_rows:
-            gauge, btn, img_name, val_lbl = self.status_rows[key]
+            gauge, st_icon, img_name, val_lbl = self.status_rows[key]
             path = self.current_icon_dir / img_name
             if path.exists(): 
-                btn.setIcon(QIcon(str(path.resolve())))
-                btn.setIconSize(QSize(16, 16)) 
+                pix = QPixmap(str(path.resolve())).scaled(24, 24, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                st_icon.setPixmap(pix)
 
-        # 하단 6개 버튼은 기존대로 app_icon_DIR 유지
         for btn, img_name in self.btn_widgets:
-            path = app_icon_DIR / img_name
+            path = self.current_icon_dir / img_name
+            if not path.exists():
+                path = app_icon_DIR / img_name
+                
             if path.exists(): 
                 btn.setIcon(QIcon(str(path.resolve())))
                 btn.setIconSize(QSize(18, 18)) 
@@ -323,7 +354,7 @@ class ControlPanel(QWidget):
         self.money_label.setText(str(int(self.state.money)))
         self.name_label.setText(self.state.pet_name)
         self.mood_label.setText(self.state.mood_label)
-        max_w = 150 
+        max_w = 180 
         
         for k, row_data in self.status_rows.items():
             gauge, _, _, val_lbl = row_data
