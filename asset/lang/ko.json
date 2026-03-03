@@ -1,0 +1,32 @@
+{
+    "title": "패널",
+    "status": { "fun": "재미", "mood": "기분", "hunger": "포만감", "energy": "에너지" },
+    "buttons": { "feed": "밥주기", "chat": "대화", "play": "놀기", "home": "집", "job": "알바", "study": "공부" },
+    "ui": {
+        "guide": "ESC = 패널 닫기",
+        "settings": "⚙️ 설정",
+        "user_name": "👤 내 이름",
+        "pet_name": "🐾 펫 이름",
+        "theme": "🎨 테마 선택",
+        "lang": "🌐 언어 선택",
+        "save": "저장 및 닫기",
+        "tray_open": "열기",
+        "tray_quit": "종료"
+    },
+    "moods": {
+        "v_happy": "🥰 매우 좋음",
+        "happy": "😊 좋음",
+        "normal": "😐 보통",
+        "sad": "😥 슬픔",
+        "angry": "💢 화남"
+    },
+    "interactions": {
+        "feed_user": "🍚 밥을 줬다!",
+        "feed_pet": ["냠냠! 맛있어!", "밥 최고!"],
+        "chat_user": "💗 대화를 나눴다!",
+        "chat_pet": ["헤헤 기분 좋아", "따뜻해..."],
+        "play_user": "🎮 같이 놀았다!",
+        "play_pet": ["야호! 재밌다!", "우다다다!"],
+        "sleep_pet": ["음냐...", "아 왜 깨워...", "ZZZ..."]
+    }
+}

@@ -1,0 +1,46 @@
+{
+    "title": "Panel",
+    "status": {
+        "fun": "Fun",
+        "mood": "Mood",
+        "hunger": "Fullness",
+        "energy": "Energy"
+    },
+    "buttons": {
+        "feed": "Feed",
+        "chat": "Chat",
+        "play": "Play",
+        "home": "Home",
+        "job": "Work",
+        "study": "Study"
+    },
+    "ui": {
+        "mood_prefix": "Mood: ",
+        "guide": "ESC = Close Panel",
+        "settings": "⚙️ Settings",
+        "user_name": "👤 User Name",
+        "pet_name": "🐾 Pet Name",
+        "theme": "🎨 Theme",
+        "lang": "🌐 Language",
+        "save": "Save & Close",
+        "sys_ready": "[System] Panel is ready.",
+        "tray_open": "Open",
+        "tray_quit": "Quit"
+    },
+    "moods": {
+        "v_happy": "🥰 Very Happy",
+        "happy": "😊 Happy",
+        "normal": "😐 Normal",
+        "sad": "😥 Sad",
+        "angry": "💢 Angry"
+    },
+    "interactions": {
+        "feed_user": "🍚 You fed the pet!",
+        "feed_pet": ["Yum yum! It's delicious!", "I'm full!", "Food is the best!"],
+        "chat_user": "💗 You had a conversation!",
+        "chat_pet": ["Hehe, I feel good 💗", "Chatter chatter!", "It's warm..."],
+        "play_user": "🎮 You played together!",
+        "play_pet": ["Yay! So much fun!", "Zoomies!", "Let's play again!"],
+        "sleep_pet": ["Mumble...", "Why did you wake me up...", "ZZZ..."]
+    }
+}
