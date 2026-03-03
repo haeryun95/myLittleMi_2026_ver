@@ -1,46 +1,35 @@
 {
-    "title": "Panel",
-    "status": {
-        "fun": "Fun",
-        "mood": "Mood",
-        "hunger": "Fullness",
-        "energy": "Energy"
-    },
-    "buttons": {
-        "feed": "Feed",
-        "chat": "Chat",
-        "play": "Play",
-        "home": "Home",
-        "job": "Work",
-        "study": "Study"
-    },
+    "title": "My Little Pet",
+    "user_name": "Me",
+    "pet_name": "Raimi",
+    "status": { "fun": "Fun", "mood": "Mood", "hunger": "Full", "energy": "Energy" },
+    "buttons": { "feed": "Feed", "chat": "Chat", "play": "Play", "home": "Home", "job": "Job", "study": "Study" },
     "ui": {
-        "mood_prefix": "Mood: ",
-        "guide": "ESC = Close Panel",
+        "guide": "ESC = Minimize to Tray",
         "settings": "⚙️ Settings",
         "user_name": "👤 User Name",
         "pet_name": "🐾 Pet Name",
         "theme": "🎨 Theme",
-        "lang": "🌐 Language",
-        "save": "Save & Close",
-        "sys_ready": "[System] Panel is ready.",
+        "lang": "🌐 Lang",
+        "save": "Save",
+        "sys_ready": "[System] Raimi is ready.",
         "tray_open": "Open",
         "tray_quit": "Quit"
     },
     "moods": {
-        "v_happy": "🥰 Very Happy",
+        "v_happy": "🥰 Best",
         "happy": "😊 Happy",
         "normal": "😐 Normal",
         "sad": "😥 Sad",
         "angry": "💢 Angry"
     },
     "interactions": {
-        "feed_user": "🍚 You fed the pet!",
-        "feed_pet": ["Yum yum! It's delicious!", "I'm full!", "Food is the best!"],
-        "chat_user": "💗 You had a conversation!",
-        "chat_pet": ["Hehe, I feel good 💗", "Chatter chatter!", "It's warm..."],
-        "play_user": "🎮 You played together!",
-        "play_pet": ["Yay! So much fun!", "Zoomies!", "Let's play again!"],
-        "sleep_pet": ["Mumble...", "Why did you wake me up...", "ZZZ..."]
+        "feed_user": "Gave a tasty snack!",
+        "feed_pet": ["Yum! It's delicious!", "Thank you!", "I'm full now!"],
+        "chat_user": "Spoke kindly to pet.",
+        "chat_pet": ["Hehe, I feel great!", "What's up?", "It's so warm..."],
+        "play_user": "Shook the toy excitedly!",
+        "play_pet": ["Yay! So much fun!", "Once more!", "Dash! Dash!"],
+        "sleep_pet": ["Mmm... sleepy...", "So tired...", "Zzz..."]
     }
 }
