@@ -3,24 +3,37 @@ windows/house_window.py - 집 창 + 집 안 펫 위젯
 - showEvent: 데스크탑 펫 숨김(확실)
 - closeEvent: 데스크탑 펫 복구
 - 배치 옆 '가구상점' 버튼
-- (추가) 쳇바퀴 소지+배치 시 드래그로 올리면 탑승: 쳇바퀴 회전 + 펫 제자리 걷기(3~10초)
-- (추가) 드래그 애니 + 바닥 그림자
-- (추가) 캐릭터가 버튼 아래/위에 있어도 버튼 클릭이 캐릭터 상호작용으로 새지 않게 처리
+- (B안) wheel 애니: furniture.json의 wheel.anim_dir 폴더 프레임 재생
+- (추가) 쳇바퀴 탑승: 소지(owned) + 배치(선택 selected) 상태에서만 가능
+- (추가) 드래그 중 근처면 스냅(하단 중앙) + 스냅 위치에서 30px 아래에 펫 고정
+- (추가) 드롭 시 5~10초: 쳇바퀴 애니 + 펫 제자리(빠른 walk) 고정 달리기
+- (추가) 종료 시: 점프하듯 위로 튀고 중력으로 떨어져 바닥 착지
+- (추가) 드래깅 애니 + 그림자
+- (추가) 버튼 아래에 펫이 있어도 버튼 클릭이 펫으로 새지 않도록 방지(raise + hit-test)
 """
+
 import random
 import time
+from pathlib import Path
 from typing import Dict, List, Optional
 
-from PySide6.QtCore import Qt, QRect, QTimer, QPoint
-from PySide6.QtGui import QFont, QIcon, QPainter, QPixmap, QColor
+from PySide6.QtCore import Qt, QRect, QTimer, QPoint, QSize
+from PySide6.QtGui import QFont, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QPushButton, QWidget
 
 from config import (
-    ANIM_DIR, ANIM_SPEED_MS, BG_CATEGORIES, BG_DEFAULT_PATH, BG_LAYER_ORDER,
+    ANIM_DIR, ANIM_SPEED_MS, BG_CATEGORIES, BG_DEFAULT_PATH,
     BUBBLE_PATH, EAT_SHAKE_DURATION, EAT_SHAKE_STRENGTH, FACE_HOLD_SEC,
     HOUSE_BUBBLE_PADDING, HOUSE_SCALE_BUBBLE, HOUSE_SCALE_CHAR,
     HOUSE_WIN_H, HOUSE_WIN_W, SLEEP_DURATION_SEC, SLEEP_RECOVER_ENERGY,
 )
+
+# ✅ ASSET_DIR이 없을 수도 있어서 방어
+try:
+    from config import ASSET_DIR  # type: ignore
+except Exception:
+    ASSET_DIR = Path("asset")
+
 from state import PetState, clamp
 from utils.image_loader import (
     load_folder_pixmaps_as_map,
@@ -39,57 +52,59 @@ except Exception:
 from windows.furniture_shop_window import FurnitureShopWindow
 
 
-# -------------------------
-# House Pet
-# -------------------------
+# ✅ 고요 요청: 스냅 지점보다 30px 아래에서 달리기 고정
+WHEEL_SNAP_Y_OFFSET = 30
+
+
 class HousePetWidget(QWidget):
     def __init__(self, state: PetState, parent=None):
         super().__init__(parent)
         self.state = state
 
         # drag
-        self.dragging: bool = False
-        self.drag_offset = QPoint(0, 0)
+        self.dragging = False
         self.press_pos: Optional[QPoint] = None
         self.start_pos = QPoint(0, 0)
-        self.was_dragged: bool = False
+        self.was_dragged = False
 
-        # animation / mode
         self.mode = "normal"
         self.frame_i = 0
         self.mode_until = time.time() + 99999
 
-        # physics
         self.vx = random.choice([-2, -1, 1, 2])
         self.vy = 0
         self.gravity = 1
         self.ground_y = 0
 
-        # shake
         self.shake_until = 0.0
         self.shake_strength = 0
 
-        # bubble
         self.current_face = ""
         self.say_text = ""
         self.say_until = 0.0
-        self.char_y = 0
+
         self.bubble: Optional[QPixmap] = None
         self.bubble_h = 0
+        self.char_y = 0
 
-        # sleep
         self.sleeping = False
         self.sleep_end_at = 0.0
 
-        # wheel interaction (pet side)
+        # ✅ wheel ride state
         self.on_wheel = False
         self.walk_in_place_until = 0.0
+        self.wheel_anchor: Optional[QPoint] = None
+        self._saved_walk_ms: Optional[int] = None
+
+        # ✅ (추가) “탑승 중 달리기 프레임이 안 나오는” 케이스를 100% 막기 위한 수동 프레임 진행
+        self._wheel_walk_last_at = 0.0
+        self._wheel_walk_ms = 80  # 달리기 속도(작을수록 빠름) 70~110 추천
 
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setMouseTracking(True)
         self.setCursor(Qt.OpenHandCursor)
 
-        # bubble pixmap
+        # bubble
         bubble = QPixmap(str(BUBBLE_PATH))
         if not bubble.isNull():
             self.bubble = bubble.scaled(
@@ -99,16 +114,13 @@ class HousePetWidget(QWidget):
                 Qt.SmoothTransformation,
             )
 
-        # emotion faces
+        # faces
         self.emotion_map = load_folder_pixmaps_as_map(ANIM_DIR / "emotion", HOUSE_SCALE_CHAR)
         if not self.emotion_map:
             raise FileNotFoundError("asset/animation/emotion 폴더에 png가 없어!")
 
         keys = list(self.emotion_map.keys())
-        auto_sad = [k for k in keys if any(t in k.lower() for t in ["sad", "cry", "tear", "depress", "down"])]
-        manual_sad = ["normal03"]
-        self.sad_faces = sorted(list({*auto_sad, *[k for k in manual_sad if k in keys]}))
-        self.normal_faces = [k for k in keys if k not in self.sad_faces]
+        self.current_face = self.state.last_face if self.state.last_face in keys else random.choice(keys)
 
         # anim frames
         self.walk_frames = load_folder_pixmaps_as_list(ANIM_DIR / "walk", HOUSE_SCALE_CHAR)
@@ -116,12 +128,11 @@ class HousePetWidget(QWidget):
         self.speak_frames = load_folder_pixmaps_as_list(ANIM_DIR / "speak", HOUSE_SCALE_CHAR)
         self.eat_frames = load_folder_pixmaps_as_list(ANIM_DIR / "eat", HOUSE_SCALE_CHAR)
 
-        # dragging frames
+        # dragging frames (폴더명 draging 유지)
         self.drag_frames = load_folder_pixmaps_as_list(ANIM_DIR / "draging", HOUSE_SCALE_CHAR)
         self.drag_frames_flipped = make_flipped_frames(self.drag_frames) if self.drag_frames else []
         self.walk_frames_flipped = make_flipped_frames(self.walk_frames) if self.walk_frames else []
 
-        # sizes
         any_pix = next(iter(self.emotion_map.values()))
         self.char_w = any_pix.width()
         self.char_h = any_pix.height()
@@ -129,8 +140,6 @@ class HousePetWidget(QWidget):
 
         self.resize(self.char_w, self.char_h + self.bubble_h)
         self.char_y = self.bubble_h
-
-        self.current_face = self.state.last_face if self.state.last_face in keys else random.choice(keys)
 
         # timers
         self.anim_timer = QTimer(self)
@@ -145,24 +154,22 @@ class HousePetWidget(QWidget):
         self.wander_timer.timeout.connect(self.auto_wander)
         self.wander_timer.start(random.randint(1200, 2600))
 
+        # init pos
         self.reset_ground()
-
         pw = self.parent().width() if self.parent() else 300
         self.move(random.randint(20, max(20, pw - self.width() - 20)), self.ground_y)
         self.say("찍! 집이다 🏠", duration=2.2)
-        self.show()
 
         if self.state.energy < 4:
             self.start_sleep_for_60s()
 
-    # -------------------------
+        self.show()
+
+    # ----------------
     # helpers
-    # -------------------------
+    # ----------------
     def get_available_faces(self) -> List[str]:
         return list(self.emotion_map.keys())
-
-    def is_walk_in_place(self) -> bool:
-        return self.walk_in_place_until > 0 and time.time() < self.walk_in_place_until
 
     def set_face(self, face_code: str, hold_sec: float = FACE_HOLD_SEC):
         if face_code in self.emotion_map:
@@ -175,14 +182,13 @@ class HousePetWidget(QWidget):
         self.say_until = time.time() + float(duration)
         self.update()
 
+    def show_bubble(self, text: str, bubble_sec: float = 2.2):
+        self.say(text, duration=bubble_sec)
+
     def start_shake(self, sec: float = 0.5, strength: int = 2):
         self.shake_until = time.time() + float(sec)
         self.shake_strength = max(0, int(strength))
         self.update()
-
-    def do_jump(self, strength: int = 12):
-        if abs(self.y() - self.ground_y) <= 2:
-            self.vy = -abs(int(strength))
 
     def set_mode(self, mode: str, sec: float = 1.5):
         if mode not in ("normal", "walk", "sleep", "speak", "eat", "drag"):
@@ -193,10 +199,27 @@ class HousePetWidget(QWidget):
         if mode in ANIM_SPEED_MS:
             self.anim_timer.start(ANIM_SPEED_MS[mode])
         else:
+            # drag는 config에 없을 수도 있으니 안전하게 90ms
             self.anim_timer.start(90 if mode == "drag" else 999999)
 
         self.mode_until = time.time() + float(sec)
         self.update()
+
+    def _set_fast_walk(self, enable: bool):
+        """
+        쳇바퀴 탑승 중: walk 프레임을 더 빠르게
+        (추가로, 아래 tick_logic에서 수동 프레임 진행도 같이 돌림)
+        """
+        base = ANIM_SPEED_MS.get("walk", 240)
+        if enable:
+            if self._saved_walk_ms is None:
+                self._saved_walk_ms = base
+            fast = max(60, int(base * 0.55))  # ✅ 고요 요청: 더 빠른 걷기
+            self.anim_timer.start(fast)
+        else:
+            if self._saved_walk_ms is not None:
+                self.anim_timer.start(self._saved_walk_ms)
+                self._saved_walk_ms = None
 
     def trigger_eat_visual(self):
         self.set_mode("eat", sec=1.2)
@@ -221,8 +244,6 @@ class HousePetWidget(QWidget):
         self.wander_timer.start(random.randint(1200, 2600))
         if self.sleeping or self.dragging or self.mode != "normal":
             return
-        if self.is_walk_in_place():
-            return
         if random.random() < 0.85:
             self.vx = random.choice([-3, -2, -1, 1, 2, 3])
             self.set_mode("walk", sec=random.uniform(1.0, 2.2))
@@ -240,6 +261,9 @@ class HousePetWidget(QWidget):
             self.frame_i = (self.frame_i + 1) % len(self.drag_frames)
         self.update()
 
+    # ----------------
+    # main logic
+    # ----------------
     def tick_logic(self):
         now = time.time()
 
@@ -256,15 +280,53 @@ class HousePetWidget(QWidget):
                 self.state.energy = clamp(self.state.energy + 0.15, 0, 100)
             return
 
-        # wheel walk-in-place end
-        if self.walk_in_place_until > 0 and now >= self.walk_in_place_until:
+        # ✅ 쳇바퀴 탑승 여부
+        walk_in_place = (self.walk_in_place_until > 0.0 and now < self.walk_in_place_until)
+
+        # ✅ 탑승 중: 좌표 강제 고정 + 빠른 walk 반복 (중력/바닥로직 실행 금지)
+        if walk_in_place:
+            if self.wheel_anchor is None:
+                self.wheel_anchor = self.pos()
+
+            self.vy = 0
+            self.move(self.wheel_anchor)
+
+            # 모드 강제
+            if self.mode != "walk":
+                self.mode = "walk"
+                self.frame_i = 0
+
+            # ✅ 타이머가 밀려도 “무조건” 달리는 모션이 나오도록 수동 프레임 진행
+            if self.walk_frames:
+                if self._wheel_walk_last_at <= 0:
+                    self._wheel_walk_last_at = now
+                if (now - self._wheel_walk_last_at) >= (self._wheel_walk_ms / 1000.0):
+                    self.frame_i = (self.frame_i + 1) % len(self.walk_frames)
+                    self._wheel_walk_last_at = now
+
+            # 기존 빠른 타이머도 유지(있어도 되고 없어도 됨)
+            self._set_fast_walk(True)
+
+            self.update()
+            return
+
+        # ✅ 탑승 끝나는 순간: 점프하듯 떨어지기(위로 튀고 중력으로 낙하)
+        if self.walk_in_place_until > 0.0 and now >= self.walk_in_place_until:
             self.walk_in_place_until = 0.0
-            if self.mode == "walk":
-                self.set_mode("normal", sec=99999)
+            self.wheel_anchor = None
+            self._set_fast_walk(False)
+
+            # ✅ 수동 프레임 상태 리셋
+            self._wheel_walk_last_at = 0.0
 
             parent = self.parent()
             if parent and hasattr(parent, "stop_wheel_spin"):
                 parent.stop_wheel_spin()
+
+            # 점프 시작
+            self.vy = -14
+            self.set_mode("normal", sec=99999)
+            self.say("찍! 후우~", 1.2)
 
         # mode timeout
         if now > self.mode_until and self.mode in ("walk", "sleep", "speak", "eat"):
@@ -272,13 +334,13 @@ class HousePetWidget(QWidget):
 
         self.reset_ground()
 
+        # physics
         if not self.dragging:
-            parent = self.parent()
             left = 0
-            right = (parent.width() - self.width()) if parent else 0
+            right = (self.parent().width() - self.width()) if self.parent() else 0
             x, y = self.x(), self.y()
 
-            if self.mode == "walk" and not self.is_walk_in_place():
+            if self.mode == "walk":
                 x += self.vx
                 if x <= left:
                     x = left
@@ -292,124 +354,104 @@ class HousePetWidget(QWidget):
 
             if y >= self.ground_y:
                 y = self.ground_y
+                # 착지 순간 살짝 흔들림(선택)
+                if self.vy > 2:
+                    self.start_shake(sec=0.18, strength=2)
                 self.vy = 0
 
             self.move(int(x), int(y))
 
         self.update()
 
-    # -------------------------
-    #  UI 버튼 영역 클릭/드래그 방지 (중요)
-    # -------------------------
-    def _is_over_ui_buttons(self, global_pos: QPoint) -> bool:
+    # ----------------
+    # input (drag/click)
+    # ----------------
+    def _is_over_blocked_ui(self, local_pos: QPoint) -> bool:
         """
-        캐릭터가 버튼 아래/근처에 있을 때 클릭이 캐릭터로 새는 문제 방지.
-        글로벌 좌표로 버튼들의 영역을 검사해서, 해당 영역이면 이벤트를 ignore()해서
-        아래 위젯(버튼)이 클릭을 받도록 한다.
+        펫이 버튼 아래에 있어도, 버튼 클릭이 펫으로 새지 않게:
+        펫의 클릭 지점이 부모의 버튼 geometry 위면 펫 이벤트 무시
         """
         parent = self.parent()
         if not parent:
             return False
-
-        for attr in ("placement_btn", "furn_shop_btn"):
-            btn = getattr(parent, attr, None)
-            if btn and btn.isVisible():
-                tl = btn.mapToGlobal(QPoint(0, 0))
-                rect = QRect(tl, btn.size())
-                if rect.contains(global_pos):
-                    return True
+        ppos = self.mapToParent(local_pos)
+        for wname in ("placement_btn", "furn_shop_btn"):
+            btn = getattr(parent, wname, None)
+            if btn and btn.isVisible() and btn.geometry().contains(ppos):
+                return True
         return False
 
-    # -------------------------
-    # mouse interactions
-    # -------------------------
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton:
-            gp = e.globalPosition().toPoint()
-            if self._is_over_ui_buttons(gp):
+            if self._is_over_blocked_ui(e.position().toPoint()):
                 e.ignore()
                 return
 
             self.dragging = True
             self.was_dragged = False
-            self.press_pos = gp
+            self.press_pos = e.globalPosition().toPoint()
             self.start_pos = self.pos()
 
             self.setCursor(Qt.ClosedHandCursor)
-
             if not self.sleeping and self.drag_frames:
                 self.set_mode("drag", sec=99999)
-
             e.accept()
 
     def mouseMoveEvent(self, e):
-        if not self.dragging:
-            return
+        if self.dragging:
+            cur = e.globalPosition().toPoint()
+            delta = cur - (self.press_pos or cur)
 
-        cur = e.globalPosition().toPoint()
-        delta = cur - (self.press_pos or cur)
+            if delta.manhattanLength() > 4:
+                self.was_dragged = True
 
-        if delta.manhattanLength() > 4:
-            self.was_dragged = True
+            target = self.start_pos + delta
 
-        target = self.start_pos + delta
+            parent = self.parent()
+            if parent:
+                # boundary (말풍선 공간 고려)
+                min_y = -self.bubble_h
+                max_y = parent.height() - (self.height() // 3)
+                min_x = -(self.width() // 2)
+                max_x = parent.width() - (self.width() // 2)
 
-        parent = self.parent()
-        if parent:
-            # 위아래/좌우 이동 제한 (말풍선 공간 고려)
-            min_y = -self.bubble_h
-            max_y = parent.height() - (self.height() // 3)
-            min_x = -(self.width() // 2)
-            max_x = parent.width() - (self.width() // 2)
+                target.setX(max(min_x, min(max_x, target.x())))
+                target.setY(max(min_y, min(max_y, target.y())))
 
-            target.setX(max(min_x, min(max_x, target.x())))
-            target.setY(max(min_y, min(max_y, target.y())))
+                # ✅ 쳇바퀴 스냅(소지+배치일 때만)
+                if hasattr(parent, "maybe_snap_to_wheel"):
+                    snapped = parent.maybe_snap_to_wheel(target, self.size())
+                    if snapped is not None:
+                        target = snapped
+                        self.on_wheel = True
+                    else:
+                        self.on_wheel = False
 
-            # ✅ 쳇바퀴 근처면 스냅(하단 중앙) - 단 소지+배치 상태일 때만 스냅됨(부모에서 gate)
-            if hasattr(parent, "maybe_snap_to_wheel"):
-                snapped = parent.maybe_snap_to_wheel(target, self.size())
-                if snapped is not None:
-                    target = snapped
-                    self.on_wheel = True
-                else:
-                    self.on_wheel = False
-
-        self.move(target)
-        e.accept()
+            self.move(target)
+            e.accept()
 
     def mouseReleaseEvent(self, e):
-        if e.button() != Qt.LeftButton:
-            return
-
-        gp = e.globalPosition().toPoint()
-        if self._is_over_ui_buttons(gp):
-            # 버튼 위에서 release 되었으면 캐릭터는 상호작용하지 않게
+        if e.button() == Qt.LeftButton:
             self.dragging = False
-            self.was_dragged = False
             self.setCursor(Qt.OpenHandCursor)
-            e.ignore()
-            return
 
-        self.dragging = False
-        self.setCursor(Qt.OpenHandCursor)
+            self.reset_ground()
 
-        self.reset_ground()
+            if self.sleeping:
+                remain = max(0.1, self.sleep_end_at - time.time())
+                self.set_mode("sleep", sec=remain)
+            else:
+                if self.mode == "drag":
+                    self.set_mode("normal", sec=99999)
 
-        if self.sleeping:
-            remain = max(0.1, self.sleep_end_at - time.time())
-            self.set_mode("sleep", sec=remain)
-        else:
-            if self.mode == "drag":
-                self.set_mode("normal", sec=99999)
+            if self.was_dragged:
+                parent = self.parent()
+                if parent and hasattr(parent, "handle_pet_dropped"):
+                    parent.handle_pet_dropped(self)
+            else:
+                self.on_pet_clicked()
 
-        if self.was_dragged:
-            parent = self.parent()
-            if parent and hasattr(parent, "handle_pet_dropped"):
-                parent.handle_pet_dropped(self)
-        else:
-            self.on_pet_clicked()
-
-        e.accept()
+            e.accept()
 
     def on_pet_clicked(self):
         if self.sleeping:
@@ -424,9 +466,6 @@ class HousePetWidget(QWidget):
         self.say(msg, 2.0)
         self.state.apply_delta({"fun": +2, "mood": +3, "energy": 0, "hunger": -0.3})
 
-    # -------------------------
-    # ControlPanel routing
-    # -------------------------
     def send_chat_from_panel(self, msg: str, chat_log):
         try:
             payload = {
@@ -443,7 +482,6 @@ class HousePetWidget(QWidget):
                 },
                 "available_faces": self.get_available_faces(),
             }
-
             if call_groq_chat:
                 result = call_groq_chat(payload, timeout_sec=30.0)
             else:
@@ -456,84 +494,75 @@ class HousePetWidget(QWidget):
                 }
 
             apply_ai_result(self.state, self, result)
-
             reply = str(result.get("reply", "")).strip()
             if reply:
                 chat_log.append(f"{self.state.pet_name}: {reply}")
         except Exception as ex:
             chat_log.append(f"[오류] 집펫 AI 처리 실패: {ex}")
 
-    def show_bubble(self, text: str, bubble_sec: float = 2.2):
-        self.say(text, duration=bubble_sec)
-
-    # -------------------------
-    # rendering
-    # -------------------------
-    def _pick_current_pix(self) -> QPixmap:
-        if (self.dragging or self.mode == "drag") and self.drag_frames:
-            idx = self.frame_i % len(self.drag_frames)
-            if self.vx < 0 and self.drag_frames_flipped:
-                return self.drag_frames_flipped[idx]
-            return self.drag_frames[idx]
-
-        if self.mode == "walk" and self.walk_frames:
-            idx = self.frame_i % len(self.walk_frames)
-            if self.vx < 0 and self.walk_frames_flipped:
-                return self.walk_frames_flipped[idx]
-            return self.walk_frames[idx]
-
-        if self.mode == "sleep" and self.sleep_frames:
-            return self.sleep_frames[self.frame_i % len(self.sleep_frames)]
-
-        if self.mode == "speak" and self.speak_frames:
-            return self.speak_frames[self.frame_i % len(self.speak_frames)]
-
-        if self.mode == "eat" and self.eat_frames:
-            return self.eat_frames[self.frame_i % len(self.eat_frames)]
-
-        return self.emotion_map.get(self.current_face) or next(iter(self.emotion_map.values()))
-
+    # ----------------
+    # render
+    # ----------------
     def paintEvent(self, e):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
 
-        pix = self._pick_current_pix()
+        if self.mode == "drag" and self.drag_frames:
+            pix = (
+                self.drag_frames_flipped[self.frame_i]
+                if self.vx < 0 and self.drag_frames_flipped
+                else self.drag_frames[self.frame_i]
+            )
+        elif self.mode == "walk" and self.walk_frames:
+            pix = (
+                self.walk_frames_flipped[self.frame_i]
+                if self.vx < 0 and self.walk_frames_flipped
+                else self.walk_frames[self.frame_i]
+            )
+        elif self.mode == "sleep" and self.sleep_frames:
+            pix = self.sleep_frames[self.frame_i]
+        elif self.mode == "speak" and self.speak_frames:
+            pix = self.speak_frames[self.frame_i]
+        elif self.mode == "eat" and self.eat_frames:
+            pix = self.eat_frames[self.frame_i % len(self.eat_frames)]
+        else:
+            pix = self.emotion_map.get(self.current_face) or next(iter(self.emotion_map.values()))
 
+        # shake
         dx = dy = 0
         if time.time() < self.shake_until and self.shake_strength > 0:
             dx = random.randint(-self.shake_strength, self.shake_strength)
             dy = random.randint(-self.shake_strength, self.shake_strength)
 
-        # 드래그 중 그림자
-        if self.dragging or self.mode == "drag":
-            shadow_y = self.char_y + (pix.height() if pix else self.char_h) + int(6 * HOUSE_SCALE_CHAR)
-            shadow_w = int((pix.width() if pix else self.char_w) * 0.62)
-            shadow_h = int(10 * HOUSE_SCALE_CHAR)
-            shadow_x = (self.width() - shadow_w) // 2
-
+        # ✅ drag shadow
+        if self.mode == "drag" and pix and not pix.isNull():
             painter.save()
-            painter.setOpacity(0.25)
+            painter.setOpacity(0.22)
+            sw = int(pix.width() * 0.55)
+            sh = max(6, int(pix.height() * 0.12))
+            sx = (self.width() // 2) - (sw // 2) + dx
+            sy = self.char_y + pix.height() - (sh // 2) + dy
             painter.setPen(Qt.NoPen)
-            painter.setBrush(QColor(0, 0, 0))
-            painter.drawEllipse(QRect(shadow_x, shadow_y, shadow_w, shadow_h))
+            painter.setBrush(Qt.black)
+            painter.drawEllipse(sx, sy, sw, sh)
             painter.restore()
 
+        # pet
         if pix and not pix.isNull():
             painter.drawPixmap(dx, dy + self.char_y, pix)
 
+        # bubble
         if self.say_text and time.time() > self.say_until:
             self.say_text = ""
 
         if self.say_text:
-            f = QFont("Segoe UI", 10)
-            f.setBold(True)
-            painter.setFont(f)
+            painter.setFont(QFont("Segoe UI", 10))
 
             bubble_w = self.bubble.width() if self.bubble else int(180 * HOUSE_SCALE_CHAR)
             bubble_h = self.bubble.height() if self.bubble else int(50 * HOUSE_SCALE_CHAR)
 
             head_x = self.width() // 2
-            head_y = self.char_y + int((pix.height() if pix else self.char_h) * 0.4)
+            head_y = self.char_y + int(pix.height() * 0.4)
             gap = int(2 * HOUSE_SCALE_CHAR)
 
             bx = max(0, min(self.width() - bubble_w, head_x - bubble_w // 2))
@@ -559,9 +588,6 @@ class HousePetWidget(QWidget):
             painter.drawText(text_rect, Qt.AlignCenter | Qt.TextWordWrap, self.say_text)
 
 
-# -------------------------
-# House Window
-# -------------------------
 class HouseWindow(QWidget):
     def __init__(self, state: PetState, desktop_pet, app_icon: Optional[QIcon] = None):
         super().__init__()
@@ -574,13 +600,8 @@ class HouseWindow(QWidget):
         if app_icon:
             self.setWindowIcon(app_icon)
 
-        # 고정 윈도우: 작은 방 느낌으로 축소(비율 유지)
-        target_w = 520
-        ratio = (HOUSE_WIN_H / HOUSE_WIN_W) if HOUSE_WIN_W else 0.6
-        target_h = int(target_w * ratio)
-        self.setFixedSize(target_w, target_h)
+        self.setFixedSize(HOUSE_WIN_W, HOUSE_WIN_H)
 
-        # background
         self.default_bg = QPixmap(str(BG_DEFAULT_PATH)) if BG_DEFAULT_PATH.exists() else QPixmap()
         if not self.default_bg.isNull():
             self.default_bg = self.default_bg.scaled(self.size(), Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
@@ -588,26 +609,28 @@ class HouseWindow(QWidget):
         self.bg_pix: Dict[str, Dict[str, QPixmap]] = {cat: {} for cat in BG_CATEGORIES}
         self.reload_bg_pixmaps()
 
-        # wheel rotation state
+        # ✅ init order
+        self.placement_panel: Optional[PlacementPanel] = None
+        self.furniture_shop: Optional[FurnitureShopWindow] = None
+
+        # wheel anim state
         self.wheel_spinning = False
-        self.wheel_angle = 0.0
+        self.wheel_frame_i = 0
         self._wheel_spin_end_at = 0.0
+        self._wheel_anim_cache: Dict[str, Dict] = {}
 
         self.wheel_timer = QTimer(self)
         self.wheel_timer.timeout.connect(self._tick_wheel_spin)
-        self.wheel_timer.start(16)
+        self.wheel_timer.start(60)
 
-        # overlay ui
+        # buttons
         self.placement_btn = QPushButton("배치", self)
         self.placement_btn.setCursor(Qt.PointingHandCursor)
         self.placement_btn.setStyleSheet("""
             QPushButton {
-                background: rgba(255,255,255,178);
-                border: 1px solid rgba(0,0,0,60);
-                border-radius: 10px;
-                padding: 6px 12px;
-                font-weight: 900;
-                min-height: 30px;
+                background: rgba(255,255,255,178); border: 1px solid rgba(0,0,0,60);
+                border-radius: 10px; padding: 6px 12px;
+                font-weight: 900; min-height: 30px;
             }
             QPushButton:hover { background: rgba(255,255,255,210); }
         """)
@@ -622,142 +645,44 @@ class HouseWindow(QWidget):
 
         self._reposition_overlay_ui()
 
-        self.placement_panel: Optional[PlacementPanel] = None
-        self.furniture_shop: Optional[FurnitureShopWindow] = None
-
-        # house pet
+        # pet
         self.house_pet = HousePetWidget(self.state, parent=self)
         self.house_pet.raise_()
+        self._raise_overlay_ui()
 
-        # 버튼은 항상 최상단(시각 + 클릭 안정)
+    # ----------------
+    # overlay ui
+    # ----------------
+    def _raise_overlay_ui(self):
         self.placement_btn.raise_()
         self.furn_shop_btn.raise_()
+        pp = getattr(self, "placement_panel", None)
+        if pp:
+            pp.raise_()
+        fs = getattr(self, "furniture_shop", None)
+        if fs:
+            fs.raise_()
 
-    # -------------------------
-    # wheel helpers (ownership + selection gate)
-    # -------------------------
-    def _selected_wheel_id(self) -> Optional[str]:
-        wid = self.state.selected_bg.get("wheel")
-        return wid if wid else None
+    def _reposition_overlay_ui(self):
+        margin = 10
+        self.placement_btn.move(self.width() - self.placement_btn.width() - margin, margin)
+        self.furn_shop_btn.move(self.placement_btn.x() - self.furn_shop_btn.width() - 8, margin)
+        self._raise_overlay_ui()
 
-    def _has_owned_selected_wheel(self) -> bool:
-        wid = self._selected_wheel_id()
-        if not wid:
-            return False
-
-        owned = self.state.owned_bg.get("wheel", set())
-
-        # ✅ list/tuple/set 모두 대응
-        if isinstance(owned, (list, tuple)):
-            return wid in owned
-        return wid in owned  # set/dict-keys 등
-
-    def _wheel_zone_rect(self) -> QRect:
-        """
-        스냅/드랍 판정용 쳇바퀴 존.
-        현재 배치(스크린샷 기준): 왼쪽 상단 쪽에 쳇바퀴가 있음.
-        """
-        w = self.width()
-        h = self.height()
-
-        # ✅ 스크린샷 기준으로 맞춘 상대 좌표 (필요하면 미세조정)
-        cx = int(w * 0.40)
-        cy = int(h * 0.39)
-
-        size = int(min(w, h) * 0.50)  # 쳇바퀴 외곽 대략
-        x = cx - size // 2
-        y = cy - size // 2
-        return QRect(x, y, size, size)
-
-    def maybe_snap_to_wheel(self, pet_top_left: QPoint, pet_size) -> Optional[QPoint]:
-        if not self._has_owned_selected_wheel():
-            return None
-
-        zone = self._wheel_zone_rect()
-
-        px = pet_top_left.x() + (pet_size.width() // 2)
-        py = pet_top_left.y() + pet_size.height()
-
-        tx = zone.center().x()
-        ty = zone.bottom()
-
-        dist = abs(px - tx) + abs(py - ty)
-        threshold = int(min(self.width(), self.height()) * 0.24)
-
-        if dist <= threshold:
-            snapped_x = tx - (pet_size.width() // 2)
-            snapped_y = ty - pet_size.height()
-            return QPoint(snapped_x, snapped_y)
-
-        return None
-
-    def handle_pet_dropped(self, pet_widget: HousePetWidget):
-        if not self._has_owned_selected_wheel():
-            return
-
-        zone = self._wheel_zone_rect()
-
-        px = pet_widget.x() + (pet_widget.width() // 2)
-        py = pet_widget.y() + pet_widget.height()
-        target = QPoint(zone.center().x(), zone.bottom())
-        dist = abs(px - target.x()) + abs(py - target.y())
-
-        if pet_widget.on_wheel or dist <= int(min(self.width(), self.height()) * 0.20):
-            snapped = self.maybe_snap_to_wheel(pet_widget.pos(), pet_widget.size())
-            if snapped is not None:
-                pet_widget.move(snapped)
-
-            self.start_wheel_spin(pet_widget)
-
-    def start_wheel_spin(self, pet_widget: HousePetWidget):
-        if not self._has_owned_selected_wheel():
-            return
-
-        duration = random.uniform(3.0, 10.0)
-
-        self.wheel_spinning = True
-        self._wheel_spin_end_at = time.time() + duration
-
-        pet_widget.walk_in_place_until = time.time() + duration
-        pet_widget.vx = random.choice([-2, -1, 1, 2])
-        pet_widget.set_mode("walk", sec=duration + 0.2)
-        pet_widget.say("찍! 쳇바퀴다!", 1.6)
-
-        self.update()
-
-    def stop_wheel_spin(self):
-        self.wheel_spinning = False
-        self._wheel_spin_end_at = 0.0
-        self.update()
-
-    def _tick_wheel_spin(self):
-        if not self.wheel_spinning:
-            return
-        if self._wheel_spin_end_at and time.time() >= self._wheel_spin_end_at:
-            self.stop_wheel_spin()
-            return
-
-        self.wheel_angle = (self.wheel_angle + 10.0) % 360.0
-        self.update()
-
-    # -------------------------
-    # ui / lifecycle
-    # -------------------------
+    # ----------------
+    # lifecycle
+    # ----------------
     def showEvent(self, e):
         try:
             self.pet.hide()
         except Exception:
             pass
 
-        # 위젯 레이어 우선순위 안정화
-        if getattr(self, "house_pet", None):
+        if hasattr(self, "house_pet") and self.house_pet:
             self.house_pet.show()
             self.house_pet.raise_()
 
-        # 버튼은 항상 맨 위
-        self.placement_btn.raise_()
-        self.furn_shop_btn.raise_()
-
+        self._raise_overlay_ui()
         super().showEvent(e)
 
     def closeEvent(self, e):
@@ -768,20 +693,56 @@ class HouseWindow(QWidget):
             pass
         super().closeEvent(e)
 
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._reposition_overlay_ui()
+
+        if not self.default_bg.isNull() and BG_DEFAULT_PATH.exists():
+            self.default_bg = QPixmap(str(BG_DEFAULT_PATH)).scaled(
+                self.size(), Qt.IgnoreAspectRatio, Qt.SmoothTransformation
+            )
+
+        self._wheel_anim_cache.clear()
+        self.reload_bg_pixmaps()
+        self.update()
+
+    # ----------------
+    # open panels
+    # ----------------
     def open_furniture_shop(self):
         if self.furniture_shop and self.furniture_shop.isVisible():
             self.furniture_shop.raise_()
             self.furniture_shop.activateWindow()
             return
         self.furniture_shop = FurnitureShopWindow(
-            self.state,
-            app_icon=self.app_icon,
-            on_purchased=self._on_layer_changed,
+            self.state, app_icon=self.app_icon, on_purchased=self._on_layer_changed
         )
         self.furniture_shop.show()
         self.furniture_shop.raise_()
         self.furniture_shop.activateWindow()
+        self._raise_overlay_ui()
 
+    def open_placement_panel(self):
+        if self.placement_panel and self.placement_panel.isVisible():
+            self.placement_panel.raise_()
+            self.placement_panel.activateWindow()
+            return
+        self.reload_bg_pixmaps()
+        self.placement_panel = PlacementPanel(self.state, on_changed=self._on_layer_changed, parent=self)
+        x = self.width() - self.placement_panel.width() - 10
+        y = self.placement_btn.y() + self.placement_btn.height() + 8
+        self.placement_panel.move(max(10, x), y)
+        self.placement_panel.show()
+        self.placement_panel.raise_()
+        self._raise_overlay_ui()
+
+    def _on_layer_changed(self):
+        self._wheel_anim_cache.clear()
+        self.update()
+
+    # ----------------
+    # bg loading
+    # ----------------
     def reload_bg_pixmaps(self):
         catalog = get_catalog()
         for cat in BG_CATEGORIES:
@@ -800,67 +761,207 @@ class HouseWindow(QWidget):
                 pm = pm.scaled(self.size(), Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
                 self.bg_pix[cat][iid] = pm
 
-    def resizeEvent(self, e):
-        super().resizeEvent(e)
-        self._reposition_overlay_ui()
-        if not self.default_bg.isNull() and BG_DEFAULT_PATH.exists():
-            self.default_bg = QPixmap(str(BG_DEFAULT_PATH)).scaled(
-                self.size(), Qt.IgnoreAspectRatio, Qt.SmoothTransformation
-            )
-        self.reload_bg_pixmaps()
+    # ----------------
+    # wheel catalog helpers (B안)
+    # ----------------
+    def _selected_wheel_id(self) -> Optional[str]:
+        wid = self.state.selected_bg.get("wheel")
+        return wid if wid else None
 
-        # 버튼 레이어 유지
-        self.placement_btn.raise_()
-        self.furn_shop_btn.raise_()
+    def _has_owned_selected_wheel(self) -> bool:
+        wid = self._selected_wheel_id()
+        if not wid:
+            return False
+        owned = self.state.owned_bg.get("wheel", set())
+        if isinstance(owned, (list, tuple)):
+            return wid in owned
+        return wid in owned
 
-        self.update()
+    def _wheel_anim_dir_for(self, wheel_id: str) -> Optional[Path]:
+        catalog = get_catalog()
+        for it in catalog.get("wheel", []):
+            if it.get("id") == wheel_id:
+                rel = it.get("anim_dir")
+                if not rel:
+                    return None
+                return (ASSET_DIR / str(rel)).resolve()
+        return None
 
-    def _reposition_overlay_ui(self):
-        margin = 10
-        self.placement_btn.move(self.width() - self.placement_btn.width() - margin, margin)
-        self.furn_shop_btn.move(self.placement_btn.x() - self.furn_shop_btn.width() - 8, margin)
+    # ----------------
+    # wheel zone / snap
+    # ----------------
+    def _wheel_zone_rect(self) -> QRect:
+        """
+        고요 스샷(핑크 영역) 기준 기본값.
+        필요하면 cx/cy만 살짝 튜닝하면 됨.
+        """
+        w = self.width()
+        h = self.height()
+        cx = int(w * 0.40)
+        cy = int(h * 0.39)
+        size = int(min(w, h) * 0.50)
+        return QRect(cx - size // 2, cy - size // 2, size, size)
 
-        # 버튼은 항상 위
-        self.placement_btn.raise_()
-        self.furn_shop_btn.raise_()
+    def _infer_frame_mode(self, pm: QPixmap) -> str:
+        if pm.isNull():
+            return "full"
+        if pm.width() >= int(self.width() * 0.85) and pm.height() >= int(self.height() * 0.85):
+            return "full"
+        return "zone"
 
-    def open_placement_panel(self):
-        if self.placement_panel and self.placement_panel.isVisible():
-            self.placement_panel.raise_()
-            self.placement_panel.activateWindow()
-            return
-        self.reload_bg_pixmaps()
-        self.placement_panel = PlacementPanel(self.state, on_changed=self._on_layer_changed, parent=self)
-        x = self.width() - self.placement_panel.width() - 10
-        y = self.placement_btn.y() + self.placement_btn.height() + 8
-        self.placement_panel.move(max(10, x), y)
-        self.placement_panel.show()
-        self.placement_panel.raise_()
+    def _get_wheel_anim_frames(self, wheel_id: str) -> Dict:
+        """
+        return {"frames": List[QPixmap], "mode": "full"|"zone"}
+        """
+        if not wheel_id:
+            return {"frames": [], "mode": "full"}
 
-    def _on_layer_changed(self):
+        cache = self._wheel_anim_cache.get(wheel_id)
+        if cache and cache.get("size") == self.size() and cache.get("frames"):
+            return {"frames": cache["frames"], "mode": cache.get("mode", "full")}
+
+        anim_dir = self._wheel_anim_dir_for(wheel_id)
+        if not anim_dir or not anim_dir.exists():
+            self._wheel_anim_cache[wheel_id] = {"size": self.size(), "frames": [], "mode": "full"}
+            return {"frames": [], "mode": "full"}
+
+        raw = load_folder_pixmaps_as_list(anim_dir, 1.0)
+
+        mode = "full"
+        for pm in raw:
+            if pm and not pm.isNull():
+                mode = self._infer_frame_mode(pm)
+                break
+
+        frames: List[QPixmap] = []
+        if mode == "full":
+            for pm in raw:
+                if pm and not pm.isNull():
+                    frames.append(pm.scaled(self.size(), Qt.IgnoreAspectRatio, Qt.SmoothTransformation))
+        else:
+            zone = self._wheel_zone_rect()
+            for pm in raw:
+                if pm and not pm.isNull():
+                    frames.append(pm.scaled(zone.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+
+        self._wheel_anim_cache[wheel_id] = {"size": self.size(), "frames": frames, "mode": mode}
+        return {"frames": frames, "mode": mode}
+
+    def maybe_snap_to_wheel(self, pet_top_left: QPoint, pet_size: QSize) -> Optional[QPoint]:
+        # ✅ 소지 + 배치(선택) 조건
         if not self._has_owned_selected_wheel():
-            self.stop_wheel_spin()
-            if getattr(self, "house_pet", None):
-                self.house_pet.on_wheel = False
-                self.house_pet.walk_in_place_until = 0.0
-                if self.house_pet.mode == "walk":
-                    self.house_pet.set_mode("normal", sec=99999)
+            return None
 
-        # 버튼 레이어 유지
-        self.placement_btn.raise_()
-        self.furn_shop_btn.raise_()
+        wheel_id = self._selected_wheel_id()
+        if not wheel_id or wheel_id not in self.bg_pix.get("wheel", {}):
+            return None
+
+        zone = self._wheel_zone_rect()
+
+        # 발 위치 기준
+        px = pet_top_left.x() + (pet_size.width() // 2)
+        py = pet_top_left.y() + pet_size.height()
+
+        tx = zone.center().x()
+        ty = zone.bottom()
+
+        dist = abs(px - tx) + abs(py - ty)
+        threshold = int(min(self.width(), self.height()) * 0.26)
+
+        if dist <= threshold:
+            snapped_x = tx - (pet_size.width() // 2)
+            snapped_y = (ty - pet_size.height()) + WHEEL_SNAP_Y_OFFSET
+            return QPoint(snapped_x, snapped_y)
+
+        return None
+
+    def handle_pet_dropped(self, pet_widget: HousePetWidget):
+        if not self._has_owned_selected_wheel():
+            return
+
+        wheel_id = self._selected_wheel_id()
+        if not wheel_id:
+            return
+
+        anim = self._get_wheel_anim_frames(wheel_id)
+        if not anim["frames"]:
+            # anim_dir 로딩 실패면 굴리기 불가
+            return
+
+        zone = self._wheel_zone_rect()
+        px = pet_widget.x() + (pet_widget.width() // 2)
+        py = pet_widget.y() + pet_widget.height()
+        target = QPoint(zone.center().x(), zone.bottom())
+        dist = abs(px - target.x()) + abs(py - target.y())
+
+        if pet_widget.on_wheel or dist <= int(min(self.width(), self.height()) * 0.28):
+            snapped = self.maybe_snap_to_wheel(pet_widget.pos(), pet_widget.size())
+            if snapped is not None:
+                pet_widget.move(snapped)
+            self.start_wheel_spin(pet_widget)
+
+    # ----------------
+    # wheel spin control
+    # ----------------
+    def start_wheel_spin(self, pet_widget: HousePetWidget):
+        wheel_id = self._selected_wheel_id()
+        if not wheel_id or not self._has_owned_selected_wheel():
+            return
+
+        anim = self._get_wheel_anim_frames(wheel_id)
+        if not anim["frames"]:
+            return
+
+        self.wheel_spinning = True
+        self.wheel_frame_i = 0
+
+        duration = random.uniform(5.0, 10.0)  # ✅ 고요 요청: 최소 5초~10초
+        self._wheel_spin_end_at = time.time() + duration
+
+        # ✅ 펫: 제자리 달리기(고정) 시작
+        pet_widget.walk_in_place_until = time.time() + duration
+        pet_widget.vx = random.choice([-2, -1, 1, 2])
+
+        # ✅ anchor 고정(“바닥으로 떨어지는 문제” 해결 핵심)
+        pet_widget.wheel_anchor = pet_widget.pos()
+        pet_widget.vy = 0
+
+        # ✅ (중요) 탑승 직전에 수동프레임 타이밍 리셋해주면 더 안정적
+        pet_widget._wheel_walk_last_at = 0.0
+
+        pet_widget.set_mode("walk", sec=duration + 0.2)
+        pet_widget.say("찍! 쳇바퀴다!", 1.6)
 
         self.update()
 
-    # -------------------------
-    # rendering
-    # -------------------------
+    def stop_wheel_spin(self):
+        self.wheel_spinning = False
+        self._wheel_spin_end_at = 0.0
+        self.update()
+
+    def _tick_wheel_spin(self):
+        if not self.wheel_spinning:
+            return
+        if self._wheel_spin_end_at and time.time() >= self._wheel_spin_end_at:
+            self.stop_wheel_spin()
+            return
+
+        wheel_id = self._selected_wheel_id()
+        anim = self._get_wheel_anim_frames(wheel_id) if wheel_id else {"frames": [], "mode": "full"}
+        frames = anim["frames"]
+        if frames:
+            self.wheel_frame_i = (self.wheel_frame_i + 1) % len(frames)
+        self.update()
+
+    # ----------------
+    # render
+    # ----------------
     def paintEvent(self, e):
         painter = QPainter(self)
 
         # wallpaper
         wp_id = self.state.selected_bg.get("wallpaper")
-        if wp_id and wp_id in self.bg_pix["wallpaper"]:
+        if wp_id and wp_id in self.bg_pix.get("wallpaper", {}):
             painter.drawPixmap(0, 0, self.bg_pix["wallpaper"][wp_id])
         else:
             if not self.default_bg.isNull():
@@ -868,28 +969,32 @@ class HouseWindow(QWidget):
             else:
                 painter.fillRect(self.rect(), Qt.white)
 
-        # wheel (rotation if spinning)
+        # wheel (spin이면 애니 프레임)
         wheel_id = self.state.selected_bg.get("wheel")
-        if wheel_id and wheel_id in self.bg_pix["wheel"]:
-            if wheel_id in self.state.owned_bg.get("wheel", set()):
-                wheel_pm = self.bg_pix["wheel"][wheel_id]
-                if not wheel_pm.isNull():
-                    if self.wheel_spinning:
-                        zone = self._wheel_zone_rect()
-                        cx = zone.center().x()
-                        cy = zone.center().y()
-
-                        painter.save()
-                        painter.translate(cx, cy)
-                        painter.rotate(self.wheel_angle)
-                        painter.translate(-cx, -cy)
-                        painter.drawPixmap(0, 0, wheel_pm)
-                        painter.restore()
+        if wheel_id and wheel_id in self.bg_pix.get("wheel", {}):
+            if self._has_owned_selected_wheel() and self.wheel_spinning:
+                anim = self._get_wheel_anim_frames(wheel_id)
+                frames = anim["frames"]
+                mode = anim["mode"]
+                if frames:
+                    frame = frames[self.wheel_frame_i]
+                    if mode == "full":
+                        painter.drawPixmap(0, 0, frame)
                     else:
-                        painter.drawPixmap(0, 0, wheel_pm)
+                        zone = self._wheel_zone_rect()
+                        x = zone.x() + (zone.width() - frame.width()) // 2
+                        y = zone.y() + (zone.height() - frame.height()) // 2
+                        painter.drawPixmap(x, y, frame)
+                else:
+                    painter.drawPixmap(0, 0, self.bg_pix["wheel"][wheel_id])
+            else:
+                painter.drawPixmap(0, 0, self.bg_pix["wheel"][wheel_id])
 
-        # rest layers
+        # other layers
         for cat in ["house", "deco", "flower"]:
             sel = self.state.selected_bg.get(cat)
-            if sel and sel in self.bg_pix[cat]:
+            if sel and sel in self.bg_pix.get(cat, {}):
                 painter.drawPixmap(0, 0, self.bg_pix[cat][sel])
+
+        # 버튼이 항상 위
+        self._raise_overlay_ui()
