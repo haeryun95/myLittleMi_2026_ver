@@ -16,34 +16,45 @@ QLabel#GaugeMood { background-image: url("{bar_track_mood}"); }
 QLabel#GaugeHunger { background-image: url("{bar_track_hunger}"); }
 QLabel#GaugeEnergy { background-image: url("{bar_track_energy}"); }
 
-/* 채팅창 및 스크롤바 (핑크 포인트) */
-QTextEdit#ChatLog {
+/* 채팅창 내부 텍스트 영역 */
+QTextEdit#ChatText {
     background-color: transparent;
-    background-image: url("{panel_chat}");
-    background-repeat: no-repeat;
-    background-position: center;
     border: none;
-    padding: 12px 18px 25px 12px;
+    padding: 5px; /* 패딩을 조금 줄여서 공간 확보 */
     color: {text_color};
 }
 
-/* 핑크 스크롤바 */
-QTextEdit#ChatLog QScrollBar:vertical {
+/* 💡 스크롤바 전체 영역 - 마진을 0으로 해서 먼저 보이는지 확인해봐 */
+#ChatText QScrollBar:vertical {
     border: none;
-    background: rgba(255, 182, 193, 0.1); /* 매우 연한 배경 */
-    width: 6px;
-    margin: 15px 4px 25px 0px;
-    border-radius: 3px;
+    background: rgba(255, 182, 193, 0.2); /* 배경을 살짝 더 진하게 */
+    width: 8px; /* 폭을 조금 더 넓게 */
+    margin: 0px; /* 일단 마진을 0으로! */
+    border-radius: 5px;
 }
 
-QTextEdit#ChatLog QScrollBar::handle:vertical {
-    background: #FFB6C1; /* 기본 분홍 */
+/* 스크롤 핸들 (움직이는 바) */
+#ChatText QScrollBar::handle:vertical {
+    background: #ffb6d7; 
     min-height: 20px;
-    border-radius: 3px;
+    border-radius: 5px;
 }
 
-QTextEdit#ChatLog QScrollBar::handle:vertical:hover {
-    background: #FF69B4; /* 호버 시 진한 핑크 */
+#ChatText QScrollBar::handle:vertical:hover {
+    background: #FF69B4; 
+}
+
+/* 버튼 제거 (필수) */
+#ChatText QScrollBar::add-line:vertical, 
+#ChatText QScrollBar::sub-line:vertical {
+    width: 0px;
+    height: 0px;
+}
+
+/* 위아래 빈 공간(Track) 배경 투명화 */
+#ChatText QScrollBar::add-page:vertical, 
+#ChatText QScrollBar::sub-page:vertical {
+    background: none;
 }
 
 /* 스탯 배경 프레임 */
@@ -51,3 +62,4 @@ QTextEdit#ChatLog QScrollBar::handle:vertical:hover {
     border-image: url("{panel_status}") 10 10 10 10;
     background-color: transparent;
 }
+
