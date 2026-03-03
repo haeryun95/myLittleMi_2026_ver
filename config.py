@@ -46,8 +46,8 @@ GROQ_RETRY_DELAY_SEC = 0.6
 # =========================
 # UI / Window Tunings
 # =========================
-HOUSE_WIN_W = 620
-HOUSE_WIN_H = int(HOUSE_WIN_W * 864 / 1184)
+HOUSE_WIN_W = 560
+HOUSE_WIN_H = 409
 HOUSE_SCALE_CHAR = 0.33
 HOUSE_SCALE_BUBBLE = 0.15
 
