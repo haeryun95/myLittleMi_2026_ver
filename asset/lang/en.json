@@ -1,35 +1,49 @@
 {
-    "title": "My Little Pet",
-    "user_name": "Me",
-    "pet_name": "Raimi",
-    "status": { "fun": "Fun", "mood": "Mood", "hunger": "Full", "energy": "Energy" },
-    "buttons": { "feed": "Feed", "chat": "Chat", "play": "Play", "home": "Home", "job": "Job", "study": "Study" },
-    "ui": {
-        "guide": "ESC = Minimize to Tray",
-        "settings": "⚙️ Settings",
-        "user_name": "👤 User Name",
-        "pet_name": "🐾 Pet Name",
-        "theme": "🎨 Theme",
-        "lang": "🌐 Lang",
-        "save": "Save",
-        "sys_ready": "[System] Raimi is ready.",
-        "tray_open": "Open",
-        "tray_quit": "Quit"
-    },
-    "moods": {
-        "v_happy": "🥰 Best",
-        "happy": "😊 Happy",
-        "normal": "😐 Normal",
-        "sad": "😥 Sad",
-        "angry": "💢 Angry"
-    },
-    "interactions": {
-        "feed_user": "Gave a tasty snack!",
-        "feed_pet": ["Yum! It's delicious!", "Thank you!", "I'm full now!"],
-        "chat_user": "Spoke kindly to pet.",
-        "chat_pet": ["Hehe, I feel great!", "What's up?", "It's so warm..."],
-        "play_user": "Shook the toy excitedly!",
-        "play_pet": ["Yay! So much fun!", "Once more!", "Dash! Dash!"],
-        "sleep_pet": ["Mmm... sleepy...", "So tired...", "Zzz..."]
-    }
+  "title": "My Little Pet",
+  "user_name": "Me",
+  "pet_name": "Raimi",
+  "status": {
+    "fun": "Fun",
+    "mood": "Mood",
+    "hunger": "Full",
+    "energy": "Energy"
+  },
+  "buttons": {
+    "feed": "Feed",
+    "chat": "Chat",
+    "play": "Play",
+    "home": "Home",
+    "job": "Job",
+    "study": "Study"
+  },
+  "ui": {
+    "lang_ko": "한국어",
+    "lang_en": "English",
+    "guide": "ESC = Minimize to Tray",
+    "settings": "⚙️ Settings",
+    "user_name": "👤 User Name",
+    "pet_name": "🐾 Pet Name",
+    "theme": "🎨 Theme",
+    "lang": "🌐 Lang",
+    "save": "Save",
+    "sys_ready": "[System] Raimi is ready.",
+    "tray_open": "Open",
+    "tray_quit": "Quit"
+  },
+  "moods": {
+    "v_happy": "🥰 Best",
+    "happy": "😊 Happy",
+    "normal": "😐 Normal",
+    "sad": "😥 Sad",
+    "angry": "💢 Angry"
+  },
+  "interactions": {
+    "feed_user": "Gave a tasty snack!",
+    "feed_pet": ["Yum! It's delicious!", "Thank you!", "I'm full now!"],
+    "chat_user": "Spoke kindly to pet.",
+    "chat_pet": ["Hehe, I feel great!", "What's up?", "It's so warm..."],
+    "play_user": "Shook the toy excitedly!",
+    "play_pet": ["Yay! So much fun!", "Once more!", "Dash! Dash!"],
+    "sleep_pet": ["Mmm... sleepy...", "So tired...", "Zzz..."]
+  }
 }

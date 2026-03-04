@@ -980,10 +980,20 @@ class PetWindow(QWidget):
 
                 if self.bubble:
                     bubble_pix = self.bubble
+
                     if is_top:
-                        # ✅ 천장일 때 말풍선도 상하반전
-                        bubble_pix = _transform_pixmap_centered(self.bubble, rotate_deg=0, flip_x=False, flip_y=True)
+                        # ✅ 천장: 캐릭터(rotate 270)와 같은 방향으로 말풍선도 회전
+                        # - 기본: rotate 270
+                        # - 만약 꼬리 방향이 반대면 flip_x / flip_y 중 하나를 추가로 켜면 됨
+                        bubble_pix = _transform_pixmap_centered(
+                            self.bubble,
+                            rotate_deg=90,
+                            flip_x=False,
+                            flip_y=True,
+                        )
+
                     painter.drawPixmap(bx + dx, by, bubble_pix)
+
                 else:
                     painter.setOpacity(0.9)
                     painter.setBrush(Qt.white)

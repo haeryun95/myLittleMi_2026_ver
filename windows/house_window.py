@@ -4,13 +4,17 @@ windows/house_window.py - 집 창 + 집 안 펫 위젯
 - closeEvent: 데스크탑 펫 복구
 - 배치 옆 '가구상점' 버튼
 - (B안) wheel 애니: furniture.json의 wheel.anim_dir 폴더 프레임 재생
-- (추가) 쳇바퀴 탑승: 소지(owned) + 배치(선택 selected) 상태에서만 가능
-- (추가) 드래그 중 근처면 스냅(하단 중앙) + 스냅 위치에서 30px 아래에 펫 고정
-- (추가) 드롭 시 5~10초: 쳇바퀴 애니 + 펫 제자리(빠른 walk) 고정 달리기
-- (추가) 종료 시: 점프하듯 위로 튀고 중력으로 떨어져 바닥 착지
-- (추가) 드래깅 애니 + 그림자
-- (추가) 버튼 아래에 펫이 있어도 버튼 클릭이 펫으로 새지 않도록 방지(raise + hit-test)
+- 쳇바퀴 탑승: 소지(owned) + 배치(선택 selected) 상태에서만 가능
+- ✅ 수면 중에는 쳇바퀴 탑승 불가(스냅/드랍/자동탑승 모두 차단)
+- 드래그 중 근처면 스냅(하단 중앙) + 스냅 위치에서 30px 아래에 펫 고정
+- 드롭 시 5~10초: 쳇바퀴 애니 + 펫 제자리(빠른 walk) 고정 달리기
+- 종료 시: 점프하듯 위로 튀고 중력으로 떨어져 바닥 착지
+- 드래깅 애니 + 그림자
+- 버튼 아래에 펫이 있어도 버튼 클릭이 펫으로 새지 않도록 방지(raise + hit-test)
+- ✅ 배치/가구상점 동시 오픈 금지(깜빡임 방지)
+- ✅ 레이어: 배경 → (house/flower) → wheel → pet(widget) → deco(overlay widget)
 """
+from __future__ import annotations
 
 import random
 import time
@@ -25,10 +29,9 @@ from config import (
     ANIM_DIR, ANIM_SPEED_MS, BG_CATEGORIES, BG_DEFAULT_PATH,
     BUBBLE_PATH, EAT_SHAKE_DURATION, EAT_SHAKE_STRENGTH, FACE_HOLD_SEC,
     HOUSE_BUBBLE_PADDING, HOUSE_SCALE_BUBBLE, HOUSE_SCALE_CHAR,
-    HOUSE_WIN_H, HOUSE_WIN_W, SLEEP_DURATION_SEC, SLEEP_RECOVER_ENERGY,
+    HOUSE_WIN_H, HOUSE_WIN_W, SLEEP_DURATION_SEC,
 )
 
-# ✅ ASSET_DIR이 없을 수도 있어서 방어
 try:
     from config import ASSET_DIR  # type: ignore
 except Exception:
@@ -52,8 +55,33 @@ except Exception:
 from windows.furniture_shop_window import FurnitureShopWindow
 
 
-# ✅ 고요 요청: 스냅 지점보다 30px 아래에서 달리기 고정
 WHEEL_SNAP_Y_OFFSET = 30
+
+
+class DecoOverlay(QWidget):
+    """
+    펫 위에 'deco(브릿지 포함)'를 그리기 위한 오버레이.
+    ✅ TransparentForMouseEvents로 펫 드래그/클릭을 방해하지 않게 함.
+    """
+    def __init__(self, parent: QWidget, get_pixmaps_callable):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self._get = get_pixmaps_callable
+        self.resize(parent.size())
+        self.show()
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        if self.parent():
+            self.resize(self.parent().size())
+
+    def paintEvent(self, e):
+        painter = QPainter(self)
+        data = self._get()  # {"deco": QPixmap or None}
+        pm = data.get("deco")
+        if pm and not pm.isNull():
+            painter.drawPixmap(0, 0, pm)
 
 
 class HousePetWidget(QWidget):
@@ -90,15 +118,15 @@ class HousePetWidget(QWidget):
         self.sleeping = False
         self.sleep_end_at = 0.0
 
-        # ✅ wheel ride state
+        # wheel ride state
         self.on_wheel = False
         self.walk_in_place_until = 0.0
         self.wheel_anchor: Optional[QPoint] = None
         self._saved_walk_ms: Optional[int] = None
 
-        # ✅ (추가) “탑승 중 달리기 프레임이 안 나오는” 케이스를 100% 막기 위한 수동 프레임 진행
+        # “무조건 달리기 프레임 보장” 수동 프레임 진행
         self._wheel_walk_last_at = 0.0
-        self._wheel_walk_ms = 80  # 달리기 속도(작을수록 빠름) 70~110 추천
+        self._wheel_walk_ms = 80
 
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setMouseTracking(True)
@@ -128,10 +156,14 @@ class HousePetWidget(QWidget):
         self.speak_frames = load_folder_pixmaps_as_list(ANIM_DIR / "speak", HOUSE_SCALE_CHAR)
         self.eat_frames = load_folder_pixmaps_as_list(ANIM_DIR / "eat", HOUSE_SCALE_CHAR)
 
+        # ✅ dance 있으면 로드(없어도 정상)
+        self.dance_frames = load_folder_pixmaps_as_list(ANIM_DIR / "dance", HOUSE_SCALE_CHAR)
+
         # dragging frames (폴더명 draging 유지)
         self.drag_frames = load_folder_pixmaps_as_list(ANIM_DIR / "draging", HOUSE_SCALE_CHAR)
         self.drag_frames_flipped = make_flipped_frames(self.drag_frames) if self.drag_frames else []
         self.walk_frames_flipped = make_flipped_frames(self.walk_frames) if self.walk_frames else []
+        self.dance_frames_flipped = make_flipped_frames(self.dance_frames) if self.dance_frames else []
 
         any_pix = next(iter(self.emotion_map.values()))
         self.char_w = any_pix.width()
@@ -160,7 +192,7 @@ class HousePetWidget(QWidget):
         self.move(random.randint(20, max(20, pw - self.width() - 20)), self.ground_y)
         self.say("찍! 집이다 🏠", duration=2.2)
 
-        if self.state.energy < 4:
+        if getattr(self.state, "energy", 0) < 4:
             self.start_sleep_for_60s()
 
         self.show()
@@ -191,7 +223,7 @@ class HousePetWidget(QWidget):
         self.update()
 
     def set_mode(self, mode: str, sec: float = 1.5):
-        if mode not in ("normal", "walk", "sleep", "speak", "eat", "drag"):
+        if mode not in ("normal", "walk", "sleep", "speak", "eat", "drag", "dance"):
             mode = "normal"
         self.mode = mode
         self.frame_i = 0
@@ -199,22 +231,17 @@ class HousePetWidget(QWidget):
         if mode in ANIM_SPEED_MS:
             self.anim_timer.start(ANIM_SPEED_MS[mode])
         else:
-            # drag는 config에 없을 수도 있으니 안전하게 90ms
             self.anim_timer.start(90 if mode == "drag" else 999999)
 
         self.mode_until = time.time() + float(sec)
         self.update()
 
     def _set_fast_walk(self, enable: bool):
-        """
-        쳇바퀴 탑승 중: walk 프레임을 더 빠르게
-        (추가로, 아래 tick_logic에서 수동 프레임 진행도 같이 돌림)
-        """
         base = ANIM_SPEED_MS.get("walk", 240)
         if enable:
             if self._saved_walk_ms is None:
                 self._saved_walk_ms = base
-            fast = max(60, int(base * 0.55))  # ✅ 고요 요청: 더 빠른 걷기
+            fast = max(60, int(base * 0.55))
             self.anim_timer.start(fast)
         else:
             if self._saved_walk_ms is not None:
@@ -242,8 +269,22 @@ class HousePetWidget(QWidget):
 
     def auto_wander(self):
         self.wander_timer.start(random.randint(1200, 2600))
-        if self.sleeping or self.dragging or self.mode != "normal":
+        if self.sleeping or self.dragging:
             return
+        if self.mode != "normal":
+            return
+
+        parent = self.parent()
+        # ✅ 자동 쳇바퀴 탑승(가끔)
+        if parent and hasattr(parent, "try_auto_wheel_ride"):
+            if parent.try_auto_wheel_ride(self):
+                return
+
+        # 가끔 춤(dance) - 폴더 있으면
+        if self.dance_frames and random.random() < 0.10:
+            self.set_mode("dance", sec=random.uniform(1.2, 2.2))
+            return
+
         if random.random() < 0.85:
             self.vx = random.choice([-3, -2, -1, 1, 2, 3])
             self.set_mode("walk", sec=random.uniform(1.0, 2.2))
@@ -259,6 +300,8 @@ class HousePetWidget(QWidget):
             self.frame_i = (self.frame_i + 1) % len(self.eat_frames)
         elif self.mode == "drag" and self.drag_frames:
             self.frame_i = (self.frame_i + 1) % len(self.drag_frames)
+        elif self.mode == "dance" and self.dance_frames:
+            self.frame_i = (self.frame_i + 1) % len(self.dance_frames)
         self.update()
 
     # ----------------
@@ -269,7 +312,7 @@ class HousePetWidget(QWidget):
 
         # sleep logic
         if self.sleeping:
-            if now >= self.sleep_end_at or self.state.energy >= 99.9:
+            if now >= self.sleep_end_at or getattr(self.state, "energy", 0) >= 99.9:
                 self.sleeping = False
                 self.state.energy = clamp(self.state.energy, 0, 100)
                 self.say("찍! 잘 잤다! 개운해!", duration=2.2)
@@ -291,7 +334,6 @@ class HousePetWidget(QWidget):
             self.vy = 0
             self.move(self.wheel_anchor)
 
-            # 모드 강제
             if self.mode != "walk":
                 self.mode = "walk"
                 self.frame_i = 0
@@ -304,32 +346,27 @@ class HousePetWidget(QWidget):
                     self.frame_i = (self.frame_i + 1) % len(self.walk_frames)
                     self._wheel_walk_last_at = now
 
-            # 기존 빠른 타이머도 유지(있어도 되고 없어도 됨)
             self._set_fast_walk(True)
-
             self.update()
             return
 
-        # ✅ 탑승 끝나는 순간: 점프하듯 떨어지기(위로 튀고 중력으로 낙하)
+        # ✅ 탑승 끝나는 순간: 점프하듯 떨어지기
         if self.walk_in_place_until > 0.0 and now >= self.walk_in_place_until:
             self.walk_in_place_until = 0.0
             self.wheel_anchor = None
             self._set_fast_walk(False)
-
-            # ✅ 수동 프레임 상태 리셋
             self._wheel_walk_last_at = 0.0
 
             parent = self.parent()
             if parent and hasattr(parent, "stop_wheel_spin"):
                 parent.stop_wheel_spin()
 
-            # 점프 시작
             self.vy = -14
             self.set_mode("normal", sec=99999)
             self.say("찍! 후우~", 1.2)
 
         # mode timeout
-        if now > self.mode_until and self.mode in ("walk", "sleep", "speak", "eat"):
+        if now > self.mode_until and self.mode in ("walk", "sleep", "speak", "eat", "dance"):
             self.set_mode("normal", sec=99999)
 
         self.reset_ground()
@@ -354,7 +391,6 @@ class HousePetWidget(QWidget):
 
             if y >= self.ground_y:
                 y = self.ground_y
-                # 착지 순간 살짝 흔들림(선택)
                 if self.vy > 2:
                     self.start_shake(sec=0.18, strength=2)
                 self.vy = 0
@@ -367,10 +403,6 @@ class HousePetWidget(QWidget):
     # input (drag/click)
     # ----------------
     def _is_over_blocked_ui(self, local_pos: QPoint) -> bool:
-        """
-        펫이 버튼 아래에 있어도, 버튼 클릭이 펫으로 새지 않게:
-        펫의 클릭 지점이 부모의 버튼 geometry 위면 펫 이벤트 무시
-        """
         parent = self.parent()
         if not parent:
             return False
@@ -409,7 +441,6 @@ class HousePetWidget(QWidget):
 
             parent = self.parent()
             if parent:
-                # boundary (말풍선 공간 고려)
                 min_y = -self.bubble_h
                 max_y = parent.height() - (self.height() // 3)
                 min_x = -(self.width() // 2)
@@ -418,9 +449,9 @@ class HousePetWidget(QWidget):
                 target.setX(max(min_x, min(max_x, target.x())))
                 target.setY(max(min_y, min(max_y, target.y())))
 
-                # ✅ 쳇바퀴 스냅(소지+배치일 때만)
+                # ✅ 쳇바퀴 스냅(소지+배치 + 수면아님)
                 if hasattr(parent, "maybe_snap_to_wheel"):
-                    snapped = parent.maybe_snap_to_wheel(target, self.size())
+                    snapped = parent.maybe_snap_to_wheel(target, self.size(), self.sleeping)
                     if snapped is not None:
                         target = snapped
                         self.on_wheel = True
@@ -447,7 +478,7 @@ class HousePetWidget(QWidget):
             if self.was_dragged:
                 parent = self.parent()
                 if parent and hasattr(parent, "handle_pet_dropped"):
-                    parent.handle_pet_dropped(self)
+                    parent.handle_pet_dropped(self, self.sleeping)
             else:
                 self.on_pet_clicked()
 
@@ -525,16 +556,21 @@ class HousePetWidget(QWidget):
             pix = self.speak_frames[self.frame_i]
         elif self.mode == "eat" and self.eat_frames:
             pix = self.eat_frames[self.frame_i % len(self.eat_frames)]
+        elif self.mode == "dance" and self.dance_frames:
+            pix = (
+                self.dance_frames_flipped[self.frame_i]
+                if self.vx < 0 and self.dance_frames_flipped
+                else self.dance_frames[self.frame_i]
+            )
         else:
             pix = self.emotion_map.get(self.current_face) or next(iter(self.emotion_map.values()))
 
-        # shake
         dx = dy = 0
         if time.time() < self.shake_until and self.shake_strength > 0:
             dx = random.randint(-self.shake_strength, self.shake_strength)
             dy = random.randint(-self.shake_strength, self.shake_strength)
 
-        # ✅ drag shadow
+        # drag shadow
         if self.mode == "drag" and pix and not pix.isNull():
             painter.save()
             painter.setOpacity(0.22)
@@ -547,11 +583,9 @@ class HousePetWidget(QWidget):
             painter.drawEllipse(sx, sy, sw, sh)
             painter.restore()
 
-        # pet
         if pix and not pix.isNull():
             painter.drawPixmap(dx, dy + self.char_y, pix)
 
-        # bubble
         if self.say_text and time.time() > self.say_until:
             self.say_text = ""
 
@@ -609,7 +643,7 @@ class HouseWindow(QWidget):
         self.bg_pix: Dict[str, Dict[str, QPixmap]] = {cat: {} for cat in BG_CATEGORIES}
         self.reload_bg_pixmaps()
 
-        # ✅ init order
+        # ✅ init order (AttributeError 방지)
         self.placement_panel: Optional[PlacementPanel] = None
         self.furniture_shop: Optional[FurnitureShopWindow] = None
 
@@ -648,14 +682,31 @@ class HouseWindow(QWidget):
         # pet
         self.house_pet = HousePetWidget(self.state, parent=self)
         self.house_pet.raise_()
+
+        # ✅ deco overlay (펫보다 위)
+        self.deco_overlay = DecoOverlay(self, self._overlay_pixmaps)
+        self.deco_overlay.raise_()
+
         self._raise_overlay_ui()
 
     # ----------------
     # overlay ui
     # ----------------
+    def _overlay_pixmaps(self) -> Dict[str, Optional[QPixmap]]:
+        # deco는 펫 위에 올릴 거라 오버레이가 담당
+        deco_id = self.state.selected_bg.get("deco")
+        pm = None
+        if deco_id and deco_id in self.bg_pix.get("deco", {}):
+            pm = self.bg_pix["deco"][deco_id]
+        return {"deco": pm}
+
     def _raise_overlay_ui(self):
         self.placement_btn.raise_()
         self.furn_shop_btn.raise_()
+        if getattr(self, "house_pet", None):
+            self.house_pet.raise_()
+        if getattr(self, "deco_overlay", None):
+            self.deco_overlay.raise_()
         pp = getattr(self, "placement_panel", None)
         if pp:
             pp.raise_()
@@ -678,9 +729,12 @@ class HouseWindow(QWidget):
         except Exception:
             pass
 
-        if hasattr(self, "house_pet") and self.house_pet:
+        if getattr(self, "house_pet", None):
             self.house_pet.show()
             self.house_pet.raise_()
+        if getattr(self, "deco_overlay", None):
+            self.deco_overlay.show()
+            self.deco_overlay.raise_()
 
         self._raise_overlay_ui()
         super().showEvent(e)
@@ -704,16 +758,35 @@ class HouseWindow(QWidget):
 
         self._wheel_anim_cache.clear()
         self.reload_bg_pixmaps()
+
+        if getattr(self, "deco_overlay", None):
+            self.deco_overlay.resize(self.size())
+
         self.update()
 
     # ----------------
-    # open panels
+    # open panels (동시 오픈 금지)
     # ----------------
+    def _close_panels_for_exclusive_open(self, who: str):
+        """
+        who == "placement" 이면 shop 닫고, who == "shop" 이면 placement 닫기
+        깜빡임 방지.
+        """
+        if who == "placement":
+            if self.furniture_shop and self.furniture_shop.isVisible():
+                self.furniture_shop.close()
+        elif who == "shop":
+            if self.placement_panel and self.placement_panel.isVisible():
+                self.placement_panel.close()
+
     def open_furniture_shop(self):
+        self._close_panels_for_exclusive_open("shop")
+
         if self.furniture_shop and self.furniture_shop.isVisible():
             self.furniture_shop.raise_()
             self.furniture_shop.activateWindow()
             return
+
         self.furniture_shop = FurnitureShopWindow(
             self.state, app_icon=self.app_icon, on_purchased=self._on_layer_changed
         )
@@ -723,10 +796,13 @@ class HouseWindow(QWidget):
         self._raise_overlay_ui()
 
     def open_placement_panel(self):
+        self._close_panels_for_exclusive_open("placement")
+
         if self.placement_panel and self.placement_panel.isVisible():
             self.placement_panel.raise_()
             self.placement_panel.activateWindow()
             return
+
         self.reload_bg_pixmaps()
         self.placement_panel = PlacementPanel(self.state, on_changed=self._on_layer_changed, parent=self)
         x = self.width() - self.placement_panel.width() - 10
@@ -739,6 +815,8 @@ class HouseWindow(QWidget):
     def _on_layer_changed(self):
         self._wheel_anim_cache.clear()
         self.update()
+        if getattr(self, "deco_overlay", None):
+            self.deco_overlay.update()
 
     # ----------------
     # bg loading
@@ -762,7 +840,7 @@ class HouseWindow(QWidget):
                 self.bg_pix[cat][iid] = pm
 
     # ----------------
-    # wheel catalog helpers (B안)
+    # wheel helpers
     # ----------------
     def _selected_wheel_id(self) -> Optional[str]:
         wid = self.state.selected_bg.get("wheel")
@@ -772,7 +850,7 @@ class HouseWindow(QWidget):
         wid = self._selected_wheel_id()
         if not wid:
             return False
-        owned = self.state.owned_bg.get("wheel", set())
+        owned = getattr(self.state, "owned_bg", {}).get("wheel", set())
         if isinstance(owned, (list, tuple)):
             return wid in owned
         return wid in owned
@@ -791,10 +869,6 @@ class HouseWindow(QWidget):
     # wheel zone / snap
     # ----------------
     def _wheel_zone_rect(self) -> QRect:
-        """
-        고요 스샷(핑크 영역) 기준 기본값.
-        필요하면 cx/cy만 살짝 튜닝하면 됨.
-        """
         w = self.width()
         h = self.height()
         cx = int(w * 0.40)
@@ -810,9 +884,6 @@ class HouseWindow(QWidget):
         return "zone"
 
     def _get_wheel_anim_frames(self, wheel_id: str) -> Dict:
-        """
-        return {"frames": List[QPixmap], "mode": "full"|"zone"}
-        """
         if not wheel_id:
             return {"frames": [], "mode": "full"}
 
@@ -847,8 +918,9 @@ class HouseWindow(QWidget):
         self._wheel_anim_cache[wheel_id] = {"size": self.size(), "frames": frames, "mode": mode}
         return {"frames": frames, "mode": mode}
 
-    def maybe_snap_to_wheel(self, pet_top_left: QPoint, pet_size: QSize) -> Optional[QPoint]:
-        # ✅ 소지 + 배치(선택) 조건
+    def maybe_snap_to_wheel(self, pet_top_left: QPoint, pet_size: QSize, is_sleeping: bool) -> Optional[QPoint]:
+        if is_sleeping:
+            return None
         if not self._has_owned_selected_wheel():
             return None
 
@@ -858,7 +930,6 @@ class HouseWindow(QWidget):
 
         zone = self._wheel_zone_rect()
 
-        # 발 위치 기준
         px = pet_top_left.x() + (pet_size.width() // 2)
         py = pet_top_left.y() + pet_size.height()
 
@@ -875,7 +946,9 @@ class HouseWindow(QWidget):
 
         return None
 
-    def handle_pet_dropped(self, pet_widget: HousePetWidget):
+    def handle_pet_dropped(self, pet_widget: HousePetWidget, is_sleeping: bool):
+        if is_sleeping:
+            return
         if not self._has_owned_selected_wheel():
             return
 
@@ -885,7 +958,6 @@ class HouseWindow(QWidget):
 
         anim = self._get_wheel_anim_frames(wheel_id)
         if not anim["frames"]:
-            # anim_dir 로딩 실패면 굴리기 불가
             return
 
         zone = self._wheel_zone_rect()
@@ -895,10 +967,45 @@ class HouseWindow(QWidget):
         dist = abs(px - target.x()) + abs(py - target.y())
 
         if pet_widget.on_wheel or dist <= int(min(self.width(), self.height()) * 0.28):
-            snapped = self.maybe_snap_to_wheel(pet_widget.pos(), pet_widget.size())
+            snapped = self.maybe_snap_to_wheel(pet_widget.pos(), pet_widget.size(), is_sleeping=False)
             if snapped is not None:
                 pet_widget.move(snapped)
             self.start_wheel_spin(pet_widget)
+
+    # ----------------
+    # pet auto ride
+    # ----------------
+    def try_auto_wheel_ride(self, pet_widget: HousePetWidget) -> bool:
+        """
+        펫이 가끔 스스로 쳇바퀴를 돌리는 행동.
+        조건:
+        - wheel 소지 + 배치
+        - 수면/드래그 아님
+        - 이미 회전 중 아님
+        """
+        if self.wheel_spinning:
+            return False
+        if pet_widget.sleeping or pet_widget.dragging:
+            return False
+        if not self._has_owned_selected_wheel():
+            return False
+
+        # 확률 (원하면 조절)
+        if random.random() > 0.12:
+            return False
+
+        snapped = self.maybe_snap_to_wheel(pet_widget.pos(), pet_widget.size(), is_sleeping=False)
+        if snapped is None:
+            # 스냅 판정이 안 나면 그냥 강제로 스냅 위치로 이동
+            zone = self._wheel_zone_rect()
+            tx = zone.center().x()
+            ty = zone.bottom()
+            snapped = QPoint(tx - (pet_widget.width() // 2), (ty - pet_widget.height()) + WHEEL_SNAP_Y_OFFSET)
+
+        pet_widget.move(snapped)
+        pet_widget.on_wheel = True
+        self.start_wheel_spin(pet_widget)
+        return True
 
     # ----------------
     # wheel spin control
@@ -915,18 +1022,14 @@ class HouseWindow(QWidget):
         self.wheel_spinning = True
         self.wheel_frame_i = 0
 
-        duration = random.uniform(5.0, 10.0)  # ✅ 고요 요청: 최소 5초~10초
+        duration = random.uniform(5.0, 10.0)
         self._wheel_spin_end_at = time.time() + duration
 
-        # ✅ 펫: 제자리 달리기(고정) 시작
         pet_widget.walk_in_place_until = time.time() + duration
         pet_widget.vx = random.choice([-2, -1, 1, 2])
 
-        # ✅ anchor 고정(“바닥으로 떨어지는 문제” 해결 핵심)
         pet_widget.wheel_anchor = pet_widget.pos()
         pet_widget.vy = 0
-
-        # ✅ (중요) 탑승 직전에 수동프레임 타이밍 리셋해주면 더 안정적
         pet_widget._wheel_walk_last_at = 0.0
 
         pet_widget.set_mode("walk", sec=duration + 0.2)
@@ -959,7 +1062,7 @@ class HouseWindow(QWidget):
     def paintEvent(self, e):
         painter = QPainter(self)
 
-        # wallpaper
+        # ✅ 1) 배경
         wp_id = self.state.selected_bg.get("wallpaper")
         if wp_id and wp_id in self.bg_pix.get("wallpaper", {}):
             painter.drawPixmap(0, 0, self.bg_pix["wallpaper"][wp_id])
@@ -969,7 +1072,13 @@ class HouseWindow(QWidget):
             else:
                 painter.fillRect(self.rect(), Qt.white)
 
-        # wheel (spin이면 애니 프레임)
+        # ✅ 2) 집/가구 (house, flower)
+        for cat in ["house", "flower"]:
+            sel = self.state.selected_bg.get(cat)
+            if sel and sel in self.bg_pix.get(cat, {}):
+                painter.drawPixmap(0, 0, self.bg_pix[cat][sel])
+
+        # ✅ 3) 쳇바퀴 (wheel)
         wheel_id = self.state.selected_bg.get("wheel")
         if wheel_id and wheel_id in self.bg_pix.get("wheel", {}):
             if self._has_owned_selected_wheel() and self.wheel_spinning:
@@ -990,11 +1099,5 @@ class HouseWindow(QWidget):
             else:
                 painter.drawPixmap(0, 0, self.bg_pix["wheel"][wheel_id])
 
-        # other layers
-        for cat in ["house", "deco", "flower"]:
-            sel = self.state.selected_bg.get(cat)
-            if sel and sel in self.bg_pix.get(cat, {}):
-                painter.drawPixmap(0, 0, self.bg_pix[cat][sel])
-
-        # 버튼이 항상 위
+        # ✅ 4) deco는 오버레이 위젯이 그린다(펫 위로)
         self._raise_overlay_ui()
