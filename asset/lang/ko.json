@@ -1,13 +1,16 @@
 {
+  "lang": "ko",
   "title": "마리펫",
   "user_name": "나",
   "pet_name": "라이미",
+
   "status": {
     "fun": "재미",
     "mood": "기분",
     "hunger": "포만감",
     "energy": "기력"
   },
+
   "buttons": {
     "feed": "밥주기",
     "chat": "대화",
@@ -16,20 +19,55 @@
     "job": "알바",
     "study": "공부"
   },
+
   "ui": {
     "lang_ko": "한국어",
     "lang_en": "English",
+
     "guide": "ESC = 트레이로 최소화",
+
     "settings": "⚙️ 설정",
     "user_name": "👤 유저 이름",
     "pet_name": "🐾 펫 이름",
     "theme": "🎨 테마",
     "lang": "🌐 언어",
     "save": "저장",
+
     "sys_ready": "[시스템] 라이미가 준비되었습니다.",
+
     "tray_open": "열기",
-    "tray_quit": "종료"
+    "tray_quit": "종료",
+
+    "place": "배치",
+    "furniture_shop": "가구상점",
+    "shop": "상점",
+
+    "buy": "구매",
+    "owned": "보유",
+    "selected": "선택됨",
+    "select": "선택",
+
+    "apply": "적용",
+    "back": "뒤로",
+    "close": "닫기",
+
+    "tab_all": "전체",
+    "tab_wallpaper": "벽지",
+    "tab_wheel": "쳇바퀴",
+    "tab_house": "집",
+    "tab_deco": "장식",
+    "tab_flower": "소품",
+
+    "price": "가격",
+
+    "not_enough_money": "돈이 부족해요!",
+    "purchased": "구매 완료!",
+    "already_owned": "이미 가지고 있어요!",
+
+    "equip": "배치",
+    "unequip": "해제"
   },
+
   "moods": {
     "v_happy": "🥰 최고",
     "happy": "😊 좋음",
@@ -37,13 +75,54 @@
     "sad": "😥 슬픔",
     "angry": "💢 화남"
   },
+
   "interactions": {
     "feed_user": "맛있는 간식을 주었다!",
     "feed_pet": ["냠냠, 정말 맛있어요!", "고마워요!", "배가 불러요!"],
+
     "chat_user": "다정하게 말을 걸었다.",
     "chat_pet": ["헤헤, 기분 좋아졌어요!", "무슨 일인가요?", "따뜻해요..."],
+
     "play_user": "신나게 장난감을 흔들었다!",
     "play_pet": ["야호! 재밌어요!", "한 번 더 해요!", "우다다다!"],
+
     "sleep_pet": ["음냐... 졸려요...", "졸려... 쿨쿨...", "Zzz..."]
+  },
+
+  "pet": {
+    "enter_home": "찍! 집이다 🏠",
+    "wake_up": "찍! 잘 잤다! 개운해!",
+    "wheel_start": "찍! 쳇바퀴다!",
+    "wheel_end": "찍! 후우~",
+
+    "click": ["집이 좋아…", "찍찍!", "여기서 놀자!", "헤헤…"],
+
+    "sleep_click": "음냐... 졸려... 더 잘래 찍..."
+  },
+
+  "furn": {
+    "wallpaper": {
+      "hamsterHouse_pink": "분홍 벽지",
+      "hamsterHouse_lemon": "레몬 벽지"
+    },
+
+    "wheel": {
+      "wheel_pink": "분홍 쳇바퀴",
+      "wheel_blue": "파란 쳇바퀴"
+    },
+
+    "house": {
+      "Mushroom": "버섯 집"
+    },
+
+    "deco": {
+      "deco_bridge_brown": "원목 다리",
+      "deco_bridge_pink": "분홍 다리"
+    },
+
+    "flower": {
+      "foraging_box_red": "빨간 채집 상자",
+      "foraging_box_pink": "분홍 채집 상자"
+    }
   }
 }

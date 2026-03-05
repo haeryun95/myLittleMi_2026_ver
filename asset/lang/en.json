@@ -1,13 +1,16 @@
 {
+  "lang": "en",
   "title": "My Little Pet",
   "user_name": "Me",
   "pet_name": "Raimi",
+
   "status": {
     "fun": "Fun",
     "mood": "Mood",
     "hunger": "Full",
     "energy": "Energy"
   },
+
   "buttons": {
     "feed": "Feed",
     "chat": "Chat",
@@ -16,20 +19,55 @@
     "job": "Job",
     "study": "Study"
   },
+
   "ui": {
     "lang_ko": "한국어",
     "lang_en": "English",
+
     "guide": "ESC = Minimize to Tray",
+
     "settings": "⚙️ Settings",
     "user_name": "👤 User Name",
     "pet_name": "🐾 Pet Name",
     "theme": "🎨 Theme",
     "lang": "🌐 Lang",
     "save": "Save",
+
     "sys_ready": "[System] Raimi is ready.",
+
     "tray_open": "Open",
-    "tray_quit": "Quit"
+    "tray_quit": "Quit",
+
+    "place": "Place",
+    "furniture_shop": "Furniture Shop",
+    "shop": "Shop",
+
+    "buy": "Buy",
+    "owned": "Owned",
+    "selected": "Selected",
+    "select": "Select",
+
+    "apply": "Apply",
+    "back": "Back",
+    "close": "Close",
+
+    "tab_all": "All",
+    "tab_wallpaper": "Wallpaper",
+    "tab_wheel": "Wheel",
+    "tab_house": "House",
+    "tab_deco": "Decoration",
+    "tab_flower": "Items",
+
+    "price": "Price",
+
+    "not_enough_money": "Not enough money!",
+    "purchased": "Purchased!",
+    "already_owned": "You already own this.",
+
+    "equip": "Place",
+    "unequip": "Remove"
   },
+
   "moods": {
     "v_happy": "🥰 Best",
     "happy": "😊 Happy",
@@ -37,13 +75,54 @@
     "sad": "😥 Sad",
     "angry": "💢 Angry"
   },
+
   "interactions": {
     "feed_user": "Gave a tasty snack!",
     "feed_pet": ["Yum! It's delicious!", "Thank you!", "I'm full now!"],
+
     "chat_user": "Spoke kindly to pet.",
     "chat_pet": ["Hehe, I feel great!", "What's up?", "It's so warm..."],
+
     "play_user": "Shook the toy excitedly!",
     "play_pet": ["Yay! So much fun!", "Once more!", "Dash! Dash!"],
+
     "sleep_pet": ["Mmm... sleepy...", "So tired...", "Zzz..."]
+  },
+
+  "pet": {
+    "enter_home": "Squeak! Home sweet home 🏠",
+    "wake_up": "Squeak! That was a good sleep!",
+    "wheel_start": "Squeak! A running wheel!",
+    "wheel_end": "Squeak... phew!",
+
+    "click": ["I like this place…", "Squeak!", "Let's play here!", "Hehe…"],
+
+    "sleep_click": "Mmm... sleepy... let me sleep..."
+  },
+
+  "furn": {
+    "wallpaper": {
+      "hamsterHouse_pink": "Pink Wallpaper",
+      "hamsterHouse_lemon": "Lemon Wallpaper"
+    },
+
+    "wheel": {
+      "wheel_pink": "Pink Wheel",
+      "wheel_blue": "Blue Wheel"
+    },
+
+    "house": {
+      "Mushroom": "Mushroom House"
+    },
+
+    "deco": {
+      "deco_bridge_brown": "Wood Bridge",
+      "deco_bridge_pink": "Pink Bridge"
+    },
+
+    "flower": {
+      "foraging_box_red": "Red Foraging Box",
+      "foraging_box_pink": "Pink Foraging Box"
+    }
   }
 }

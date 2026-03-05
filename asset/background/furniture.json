@@ -2,63 +2,69 @@
   "wallpaper": [
     {
       "id": "hamsterHouse_pink",
-      "name": "분홍 벽지",
+      "name_key": "furn.wallpaper.hamsterHouse_pink",
       "price": 900,
       "file": "wallpaper/hamsterHouse_pink.png"
     },
     {
       "id": "hamsterHouse_lemon",
-      "name": "레몬 벽지",
+      "name_key": "furn.wallpaper.hamsterHouse_lemon",
       "price": 900,
       "file": "wallpaper/hamsterHouse_lemon.png"
     }
   ],
+
   "wheel": [
     {
       "id": "wheel_pink",
+      "name_key": "furn.wheel.wheel_pink",
       "file": "wheel/wheel_pink.png",
       "anim_dir": "animation/wheel/wheel_pink",
       "price": 0
     },
     {
       "id": "wheel_blue",
+      "name_key": "furn.wheel.wheel_blue",
       "file": "wheel/wheel_blue.png",
       "anim_dir": "animation/wheel/wheel_blue",
       "price": 400
     }
   ],
+
   "house": [
     {
       "id": "Mushroom",
-      "name": "버섯 집",
+      "name_key": "furn.house.Mushroom",
       "price": 1200,
       "file": "house/Mushroom.png"
     }
   ],
+
   "deco": [
     {
       "id": "deco_bridge_brown",
-      "name": "원목 다리",
+      "name_key": "furn.deco.deco_bridge_brown",
       "price": 600,
       "file": "deco/deco_bridge_brown.png"
     },
     {
       "id": "deco_bridge_pink",
-      "name": "분홍 다리",
+      "name_key": "furn.deco.deco_bridge_pink",
       "price": 600,
       "file": "deco/deco_bridge_pink.png"
     }
   ],
+
   "flower": [
     {
       "id": "foraging_box_red",
-      "name": "빨간 채집 상자",
+      "name_key": "furn.flower.foraging_box_red",
       "price": 500,
       "file": "flower/foraging_box_red.png"
     },
     {
       "id": "foraging_box_pink",
-      "name": "분홍 채집 상자",
+      "name_key": "furn.flower.foraging_box_pink",
       "price": 500,
       "file": "flower/foraging_box_pink.png"
     }

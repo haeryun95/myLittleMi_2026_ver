@@ -59,3 +59,33 @@ def trigger_pet_action_bubble(
     except Exception as ex:
         if chat_log is not None:
             chat_log.append(f"[오류] 말풍선 출력 실패: {ex}")
+            LANG_DIR = Path("asset/lang")
+
+_cache = {}
+
+def load_lang(lang):
+    if lang in _cache:
+        return _cache[lang]
+
+    path = LANG_DIR / f"{lang}.json"
+
+    if not path.exists():
+        path = LANG_DIR / "ko.json"
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    _cache[lang] = data
+    return data
+
+
+def t(state, key, fallback=""):
+    lang = getattr(state, "lang", "ko")
+    data = load_lang(lang)
+
+    cur = data
+
+    for k in key.split("."):
+        if k not in cur:
+            return fallback
+        cur = cur[k]
+
+    return cur

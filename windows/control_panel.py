@@ -236,6 +236,13 @@ class ControlPanel(QWidget):
         self.chat_log.append(f"<div style='color:#aaaaaa;'>{self.lang.get('ui.sys_ready')}</div>")
 
     # --- 다국어 및 실시간 번역 ---
+    def reset_chat_log(self, reason_key: str = "ui.sys_ready"):
+        """채팅 로그 초기화 후 시스템 메시지 1줄 다시 출력"""
+        self.chat_log.clear()
+        self.chat_log.append(
+            f"<div style='color:#aaaaaa;'>{self.lang.get(reason_key)}</div>"
+        )
+
     def _get_localized_mood(self):
         m = self.state.mood
         mk = "v_happy" if m > 80 else "happy" if m > 60 else "normal" if m > 40 else "sad" if m > 20 else "angry"
@@ -630,6 +637,9 @@ class SettingsWindow(StyledWidget):
             # 패널 전체 번역 반영(+ 설정창도)
             self.panel.retranslate_ui()
             self.retranslate_ui()
+
+            self.panel.reset_chat_log("ui.sys_ready")
+        
 
         self.panel._sync_ui()
         self.close()
