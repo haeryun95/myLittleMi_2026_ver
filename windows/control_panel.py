@@ -235,6 +235,9 @@ class ControlPanel(QWidget):
         self.ui_timer = QTimer(self); self.ui_timer.timeout.connect(self._sync_ui); self.ui_timer.start(250)
         self.chat_log.append(f"<div style='color:#aaaaaa;'>{self.lang.get('ui.sys_ready')}</div>")
 
+    def on_click_save():
+        save_manager.save_now(reason="manual")
+
     # --- 다국어 및 실시간 번역 ---
     def reset_chat_log(self, reason_key: str = "ui.sys_ready"):
         """채팅 로그 초기화 후 시스템 메시지 1줄 다시 출력"""

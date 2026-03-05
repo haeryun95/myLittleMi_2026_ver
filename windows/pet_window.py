@@ -13,7 +13,7 @@ windows/pet_window.py - 데스크탑 위에 떠다니는 펫 창
 3) climb 동안 hold(>=2초 랜덤) ↔ move(랜덤) 반복
    - move 동안에만 프레임 순환 + 이동 발생
    - 프레임 1회 진행마다 20px 이동(벽: 상/하, 천장: 좌/우)
-4) climb 종료 시 중앙 고정 X -> 바닥 쪽 랜덤 위치로 점프
+4) climb 종료 시 바닥 쪽 랜덤 위치로 점프
 5) climb 도중 방해/중단되어도 다시 climb 발동 가능 (짧은 쿨다운만)
 6) 벽/천장에 "딱 붙는 느낌":
    - 기본 이동 제한은 EDGE_MARGIN=6
@@ -21,12 +21,13 @@ windows/pet_window.py - 데스크탑 위에 떠다니는 펫 창
    - Qt QRect right/bottom(inclusive) 문제 해결을 위해 exclusive 경계 사용
 
 ✅ 천장 이미지
-- 천장 climb 시 rotate 270도 (고요가 원하는 방향)
-- 말풍선도 천장에서는 상하반전 + 위치는 캐릭터 "아래"로
+- 천장 climb 시 rotate 270도 (고요가 원하는 붙는 방향)
 
-✅ 말풍선
-- 너무 위에 뜨는 문제: 기본 오프셋 조정
-- 천장일 때는 아래로 내려 배치
+✅ 말풍선 (핵심 수정)
+- 평소: 말풍선은 캐릭터 "위쪽"(위젯 상단)
+- 천장 climb일 때만: 캐릭터는 위젯 상단(0)에 그리고, 말풍선은 캐릭터 "아래"에 배치
+- 이를 위해 "char_y"를 고정값으로 쓰지 않고, 상황에 따라 0 / bubble_h 로 바꿔서
+  스프라이트 경계 계산(클램프/스냅)도 동일하게 맞춤
 
 ✅ dance
 - dance 모드 시작 시 랜덤 좌우반전 고정
@@ -111,9 +112,8 @@ class PetWindow(QWidget):
     AUTO_CLIMB_EDGE_RANGE = 100     # 자동 climb은 가장자리 100px 이내에서만
     CLIMB_COOLDOWN_SEC = 0.35       # 방해/중단 후 재발동 쿨다운
 
-    # 말풍선 위치 튜닝 (숫자 ↑ = 더 아래로)
-    BUBBLE_OFFSET_NORMAL = 80       # 기본(바닥/벽) 말풍선 위치 보정
-    BUBBLE_TOP_GAP = 6              # 천장일 때 캐릭터 아래로 말풍선 떨어뜨리는 간격
+    # ✅ 천장일 때 말풍선 아래로 내릴 gap (위젯 높이도 이만큼 여유 추가)
+    TOP_BUBBLE_GAP = 0
 
     def __init__(self, state: PetState, app_icon: Optional[QIcon] = None):
         super().__init__()
@@ -164,10 +164,7 @@ class PetWindow(QWidget):
         self.drag_frames_flipped = make_flipped_frames(self.drag_frames) if self.drag_frames else []
         self.dance_frames_flipped = make_flipped_frames(self.dance_frames) if self.dance_frames else []
 
-        # climb variants (미리 생성)
-        # - right: 원본
-        # - left: 좌우 반전
-        # - top: rotate 270 (고요가 원하는 천장 방향)
+        # climb variants
         self.climb_frames_right = self.climb_frames[:] if self.climb_frames else []
         self.climb_frames_left = make_flipped_frames(self.climb_frames) if self.climb_frames else []
         self.climb_frames_top = [
@@ -191,8 +188,11 @@ class PetWindow(QWidget):
         self.char_h = any_pix.height()
 
         self.bubble_h = self.bubble.height() if self.bubble else 45
-        self.resize(self.char_w, self.char_h + self.bubble_h)
-        self.char_y = self.bubble_h  # 캐릭터 그릴 y 오프셋(말풍선 영역 확보)
+
+        # ✅ 높이를 "아래 배치"까지 고려해서 여유 추가
+        # - 평소: bubble(위) + char
+        # - 천장: char(위) + gap + bubble(아래)
+        self.resize(self.char_w, self.char_h + self.bubble_h + self.TOP_BUBBLE_GAP)
 
         self.screen_rect = QApplication.primaryScreen().availableGeometry()
 
@@ -202,7 +202,7 @@ class PetWindow(QWidget):
             left + self.EDGE_MARGIN,
             max(left + self.EDGE_MARGIN, right - self.EDGE_MARGIN - self.char_w),
         )
-        start_y = bottom - self.EDGE_MARGIN - (self.char_y + self.char_h)
+        start_y = bottom - self.EDGE_MARGIN - self._sprite_h_total()
         self.move(start_x, start_y)
 
         # drag
@@ -236,7 +236,7 @@ class PetWindow(QWidget):
         self.sleeping = False
         self.sleep_end_at = 0.0
 
-        # dance facing(랜덤 반전 고정)
+        # dance facing
         self.dance_facing_left = False
 
         # climb
@@ -355,9 +355,29 @@ class PetWindow(QWidget):
     def do_jump(self, strength: int = 12):
         """바닥에 있을 때만 점프."""
         left, top, right, bottom = self._screen_edges_exclusive()
-        floor_y = bottom - self.EDGE_MARGIN - (self.char_y + self.char_h)
+        floor_y = bottom - self.EDGE_MARGIN - self._sprite_h_total()
         if abs(self.y() - floor_y) <= 2:
             self.vy = -abs(int(strength))
+
+    # -----------------------------
+    # ✅ dynamic char_y / sprite height
+    # -----------------------------
+    def _is_top_climb(self) -> bool:
+        return self.is_climbing and self.mode == "climb" and self.climb_surface == "top"
+
+    def _current_char_y(self) -> int:
+        """
+        ✅ 핵심:
+        - 평소: bubble을 위에 그리고 캐릭터는 아래(bubble_h)에 그림
+        - 천장 climb: 캐릭터를 위(0)에 그리고 bubble은 아래로 가야 하므로 char_y=0
+        """
+        return 0 if self._is_top_climb() else self.bubble_h
+
+    def _sprite_h_total(self) -> int:
+        """위젯에서 '스프라이트 기준' 전체 높이(캐릭터 + bubble영역 포함)를 계산."""
+        # 화면 충돌/클램프는 "캐릭터가 차지하는 영역"만 맞추면 되는데,
+        # 이 앱은 위젯 자체가 말풍선을 포함하니까, 바닥 계산에 위젯 전체 높이를 쓰는 게 안전함.
+        return self.height()
 
     # -----------------------------
     # geometry helpers (exclusive edges)
@@ -379,10 +399,10 @@ class PetWindow(QWidget):
         return self.x() + self.char_w
 
     def _sprite_top(self) -> int:
-        return self.y() + self.char_y
+        return self.y() + self._current_char_y()
 
     def _sprite_bottom(self) -> int:
-        return self.y() + self.char_y + self.char_h
+        return self.y() + self._current_char_y() + self.char_h
 
     def _clamp_xy_with_custom_margin(self, x: int, y: int, m: int) -> Tuple[int, int]:
         """스프라이트가 화면 가장자리에서 m 픽셀 밖으로 못 나가게 클램프."""
@@ -391,15 +411,17 @@ class PetWindow(QWidget):
         min_x = left + m
         max_x = right - m - self.char_w
 
-        min_y = top + m - self.char_y
-        max_y = bottom - m - (self.char_y + self.char_h)
+        # ✅ char_y가 상황별로 달라지므로 current_char_y 사용
+        char_y = self._current_char_y()
+        min_y = top + m - char_y
+        max_y = bottom - m - (char_y + self.char_h)
 
         x = max(min_x, min(max_x, x))
         y = max(min_y, min(max_y, y))
         return x, y
 
     def _clamp_xy_with_margin(self, x: int, y: int) -> Tuple[int, int]:
-        """기본(EDGE_MARGIN) 클램프. (호환/에러 방지)"""
+        """기본(EDGE_MARGIN) 클램프."""
         return self._clamp_xy_with_custom_margin(x, y, self.EDGE_MARGIN)
 
     def _snap_to_surface(self, surface: str):
@@ -408,13 +430,14 @@ class PetWindow(QWidget):
         m = self.CLIMB_STICK_MARGIN if self.is_climbing else self.EDGE_MARGIN
 
         x, y = self.x(), self.y()
+        char_y = self._current_char_y()
 
         if surface == "left":
             x = left + m
         elif surface == "right":
             x = right - m - self.char_w
         elif surface == "top":
-            y = top + m - self.char_y
+            y = top + m - char_y
 
         x, y = self._clamp_xy_with_custom_margin(int(x), int(y), m)
         self.move(x, y)
@@ -582,10 +605,13 @@ class PetWindow(QWidget):
         x, y = self.x(), self.y()
         step = self.climb_dir * self.climb_step_px
 
+        # ✅ char_y가 상황에 따라 달라지므로 여기서도 current_char_y 적용
+        char_y = self._current_char_y()
+
         if self.climb_surface in ("left", "right"):
             y += step
-            min_y = top + m - self.char_y
-            max_y = bottom - m - (self.char_y + self.char_h)
+            min_y = top + m - char_y
+            max_y = bottom - m - (char_y + self.char_h)
             if y <= min_y:
                 y = min_y
                 self.climb_dir *= -1
@@ -603,7 +629,7 @@ class PetWindow(QWidget):
             elif x >= max_x:
                 x = max_x
                 self.climb_dir *= -1
-            y = top + m - self.char_y
+            y = top + m - char_y
 
         # 표면 고정(완전 밀착)
         if self.climb_surface == "left":
@@ -611,7 +637,7 @@ class PetWindow(QWidget):
         elif self.climb_surface == "right":
             x = right - m - self.char_w
         elif self.climb_surface == "top":
-            y = top + m - self.char_y
+            y = top + m - char_y
 
         x, y = self._clamp_xy_with_custom_margin(int(x), int(y), m)
         self.move(x, y)
@@ -626,7 +652,6 @@ class PetWindow(QWidget):
         max_x = right - m - self.char_w
         center = (min_x + max_x) // 2
 
-        # 중앙에서 떨어진 곳 우선
         min_away = 90
         candidate = random.randint(min_x, max_x)
         for _ in range(10):
@@ -682,7 +707,6 @@ class PetWindow(QWidget):
         if e.button() != Qt.LeftButton:
             return
 
-        # climb/drop 방해 시 바로 복구
         if self.is_climbing:
             self._stop_climb()
         if self.is_dropping:
@@ -709,7 +733,6 @@ class PetWindow(QWidget):
         if self.press_pos and (current_pos - self.press_pos).manhattanLength() > 4:
             self.was_dragged = True
 
-        # ✅ 드래그도 EDGE_MARGIN 밖으로 못 나감
         target = current_pos - self.drag_offset
         x, y = self._clamp_xy_with_margin(target.x(), target.y())
         self.move(x, y)
@@ -823,7 +846,7 @@ class PetWindow(QWidget):
             self.vy += self.gravity
             y += self.vy
 
-            floor_y = bottom - self.EDGE_MARGIN - (self.char_y + self.char_h)
+            floor_y = bottom - self.EDGE_MARGIN - self._sprite_h_total()
             if y >= floor_y:
                 y = floor_y
                 self.vy = 0
@@ -868,12 +891,11 @@ class PetWindow(QWidget):
         self.vy += self.gravity
         y += self.vy
 
-        floor_y = bottom - self.EDGE_MARGIN - (self.char_y + self.char_h)
+        floor_y = bottom - self.EDGE_MARGIN - self._sprite_h_total()
         if y >= floor_y:
             y = floor_y
             self.vy = 0
 
-        # 항상 EDGE_MARGIN 내
         x, y = self._clamp_xy_with_margin(int(x), int(y))
         self.move(x, y)
         self.update()
@@ -954,8 +976,13 @@ class PetWindow(QWidget):
                 dx = random.randint(-self.shake_strength, self.shake_strength)
                 dy = random.randint(-self.shake_strength, self.shake_strength)
 
+            # ✅ 현재 char_y(천장 climb이면 0, 아니면 bubble_h)
+            char_y = self._current_char_y()
+
             # draw character
-            painter.drawPixmap(dx, dy + self.char_y, pix)
+            painter.drawPixmap(dx, dy + char_y, pix)
+
+            # bubble
 
             # bubble
             if self.say_text and now < self.say_until:
@@ -963,37 +990,35 @@ class PetWindow(QWidget):
                 font.setBold(True)
                 painter.setFont(font)
 
-                bw = self.bubble.width() if self.bubble else 120
-                bh = self.bubble.height() if self.bubble else 45
+                is_top = self._is_top_climb()
+                char_y = self._current_char_y()
+
+                # ✅ bubble_pix 먼저 결정 (천장일 때만 90도 회전)
+                bubble_pix = self.bubble  # 기본
+                if self.bubble and is_top:
+                    # 90도 회전: Qt에서 +는 반시계, 시계방향 90을 원하면 -90
+                    bubble_pix = _transform_pixmap_centered(self.bubble, rotate_deg=-180)
+
+                # ✅ 회전된 pix 기준으로 크기 계산해야 중심이 맞음
+                if self.bubble:
+                    bw = bubble_pix.width()
+                    bh = bubble_pix.height()
+                else:
+                    bw = 120
+                    bh = 45
+
                 bx = (self.width() - bw) // 2
 
-                is_top = (self.mode == "climb" and self.climb_surface == "top")
-
+                # ✅ 핵심: 천장일 때만 캐릭터 아래로, 간격 TOP_BUBBLE_GAP만큼
                 if is_top:
-                    # ✅ 천장일 때: 캐릭터 "아래"로 + 조금 띄우기
-                    by = self.char_y + self.char_h + self.BUBBLE_TOP_GAP + dy
+                    by = char_y + self.char_h + self.TOP_BUBBLE_GAP + dy
                 else:
-                    # ✅ 기본: 캐릭터 "위"로 (너무 높던 문제 해결)
-                    by = max(0, self.char_y - bh + self.BUBBLE_OFFSET_NORMAL) + dy
+                    by = 0 + dy
 
                 bubble_rect = QRect(bx + dx, by, bw, bh)
 
                 if self.bubble:
-                    bubble_pix = self.bubble
-
-                    if is_top:
-                        # ✅ 천장: 캐릭터(rotate 270)와 같은 방향으로 말풍선도 회전
-                        # - 기본: rotate 270
-                        # - 만약 꼬리 방향이 반대면 flip_x / flip_y 중 하나를 추가로 켜면 됨
-                        bubble_pix = _transform_pixmap_centered(
-                            self.bubble,
-                            rotate_deg=90,
-                            flip_x=False,
-                            flip_y=True,
-                        )
-
                     painter.drawPixmap(bx + dx, by, bubble_pix)
-
                 else:
                     painter.setOpacity(0.9)
                     painter.setBrush(Qt.white)
@@ -1007,17 +1032,5 @@ class PetWindow(QWidget):
                     Qt.AlignCenter | Qt.TextWordWrap,
                     self.say_text
                 )
-
         finally:
             painter.end()
-
-    # -----------------------------
-    # AI chat removed (호환용 stub)
-    # -----------------------------
-    def send_chat_from_panel(self, user_text: str):
-        """
-        ✅ 제품 의도 변경으로 AI 채팅 기능 삭제.
-        컨트롤패널/외부가 이 메서드를 호출하더라도 크래시 없이 안내만.
-        """
-        # 필요하면 로그 시스템에만 남기고 싶으면 여기서 처리하면 됨
-        self.show_bubble("찍… 지금은 채팅 기능이 없어!", 2.0)
