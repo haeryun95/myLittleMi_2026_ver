@@ -111,9 +111,10 @@ class PetWindow(QWidget):
     EDGE_TRIGGER_PAD = 0            # 드래그 후 climb 트리거: 거의 닿아야 발동
     AUTO_CLIMB_EDGE_RANGE = 100     # 자동 climb은 가장자리 100px 이내에서만
     CLIMB_COOLDOWN_SEC = 0.35       # 방해/중단 후 재발동 쿨다운
-
+    
     # ✅ 천장일 때 말풍선 아래로 내릴 gap (위젯 높이도 이만큼 여유 추가)
-    TOP_BUBBLE_GAP = 0
+    BUBBLE_GAP_TOP = 10
+    BUBBLE_GAP_NORMAL = 1
 
     def __init__(self, state: PetState, app_icon: Optional[QIcon] = None):
         super().__init__()
@@ -192,7 +193,7 @@ class PetWindow(QWidget):
         # ✅ 높이를 "아래 배치"까지 고려해서 여유 추가
         # - 평소: bubble(위) + char
         # - 천장: char(위) + gap + bubble(아래)
-        self.resize(self.char_w, self.char_h + self.bubble_h + self.TOP_BUBBLE_GAP)
+        self.resize(self.char_w, self.char_h + self.bubble_h + self.BUBBLE_GAP_TOP)
 
         self.screen_rect = QApplication.primaryScreen().availableGeometry()
 
@@ -1011,10 +1012,11 @@ class PetWindow(QWidget):
 
                 # ✅ 핵심: 천장일 때만 캐릭터 아래로, 간격 TOP_BUBBLE_GAP만큼
                 if is_top:
-                    by = char_y + self.char_h + self.TOP_BUBBLE_GAP + dy
+                    # 캐릭터 바로 아래 기준
+                    by = (char_y + self.char_h) + self.BUBBLE_GAP_TOP + dy
                 else:
-                    by = 0 + dy
-
+                    # 평소: 캐릭터 위
+                    by = (char_y - bh) + self.BUBBLE_GAP_NORMAL + dy
                 bubble_rect = QRect(bx + dx, by, bw, bh)
 
                 if self.bubble:
