@@ -1,39 +1,6 @@
 """
 windows/pet_window.py - 데스크탑 위에 떠다니는 펫 창
 
-- 드래그 시 asset/animation/dragging 프레임 애니메이션
-- AI 답변/채팅 기능 삭제 (제품 의도 변경)
-- 다국어: asset/lang/ko.json, asset/lang/en.json
-
-✅ Climb (고요 요구사항 반영)
-1) 유저가 드래그로 화면 끝(위/오/왼)에 놓으면 climb 시작 (스프라이트 기준 + 여백 고려)
-2) 자동(랜덤) climb:
-   - 가장자리 100px 이내일 때만 발동
-   - 가장 가까운 면(left/right/top) 선택, 동점이면 top보다 left/right 우선
-3) climb 동안 hold(>=2초 랜덤) ↔ move(랜덤) 반복
-   - move 동안에만 프레임 순환 + 이동 발생
-   - 프레임 1회 진행마다 20px 이동(벽: 상/하, 천장: 좌/우)
-4) climb 종료 시 바닥 쪽 랜덤 위치로 점프
-5) climb 도중 방해/중단되어도 다시 climb 발동 가능 (짧은 쿨다운만)
-6) 벽/천장에 "딱 붙는 느낌":
-   - 기본 이동 제한은 EDGE_MARGIN=6
-   - climb 중에는 CLIMB_STICK_MARGIN=0으로 완전 밀착
-   - Qt QRect right/bottom(inclusive) 문제 해결을 위해 exclusive 경계 사용
-
-✅ 천장 이미지
-- 천장 climb 시 rotate 270도 (고요가 원하는 붙는 방향)
-
-✅ 말풍선 (핵심 수정)
-- 평소: 말풍선은 캐릭터 "위쪽"(위젯 상단)
-- 천장 climb일 때만: 캐릭터는 위젯 상단(0)에 그리고, 말풍선은 캐릭터 "아래"에 배치
-- 이를 위해 "char_y"를 고정값으로 쓰지 않고, 상황에 따라 0 / bubble_h 로 바꿔서
-  스프라이트 경계 계산(클램프/스냅)도 동일하게 맞춤
-
-✅ dance
-- dance 모드 시작 시 랜덤 좌우반전 고정
-
-✅ 호환
-- show_bubble(text, bubble_sec) 메서드 유지
 """
 
 import random
@@ -113,8 +80,8 @@ class PetWindow(QWidget):
     CLIMB_COOLDOWN_SEC = 0.35       # 방해/중단 후 재발동 쿨다운
     
     # ✅ 천장일 때 말풍선 아래로 내릴 gap (위젯 높이도 이만큼 여유 추가)
-    BUBBLE_GAP_TOP = 10
-    BUBBLE_GAP_NORMAL = 1
+    BUBBLE_GAP_TOP = 60
+    BUBBLE_GAP_NORMAL = 60
 
     def __init__(self, state: PetState, app_icon: Optional[QIcon] = None):
         super().__init__()
@@ -1017,6 +984,7 @@ class PetWindow(QWidget):
                 else:
                     # 평소: 캐릭터 위
                     by = (char_y - bh) + self.BUBBLE_GAP_NORMAL + dy
+                by = max(0, min(by, self.height() - bh))
                 bubble_rect = QRect(bx + dx, by, bw, bh)
 
                 if self.bubble:

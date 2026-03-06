@@ -936,7 +936,8 @@ class HouseWindow(QWidget):
 
     def closeEvent(self, e):
         try:
-            save_manager.save_now(reason="exit")
+            self.pet.show()
+            self.pet.raise_()
         except Exception:
             pass
         super().closeEvent(e)
@@ -969,9 +970,7 @@ class HouseWindow(QWidget):
             return
 
         self.furniture_shop = FurnitureShopWindow(
-            # self.state, app_icon=self.app_icon, on_purchased=self._on_layer_changed, parent=self,
-            self.state, app_icon=self.app_icon, on_purchased=lambda: (save_manager.mark_dirty(), self.reload_bg_pixmaps()), parent=self,
-            
+            self.state, app_icon=self.app_icon, on_purchased=self._on_layer_changed, parent=self
         )
         self.furniture_shop.show()
         self.furniture_shop.raise_()

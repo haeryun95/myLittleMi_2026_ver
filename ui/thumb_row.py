@@ -1,7 +1,12 @@
 """
-ui/thumb_row.py - ThumbRow 위젯 (썸네일 + 텍스트 + 버튼 행)
+ui/thumb_row.py - ThumbRow widget (thumbnail + texts + action button row)
+
+- PlacementPanel / FurnitureShopWindow 양쪽에서 공통으로 사용.
+- 호출부에서 `category=...` 같은 추가 kwargs를 넘길 수 있어서,
+  호환성을 위해 `category`와 `**kwargs`를 받아 무시하도록 한다.
 """
-from typing import Optional
+
+from typing import Optional, Any, Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
@@ -15,41 +20,54 @@ class ThumbRow(QWidget):
         subtitle: str,
         pix: Optional[QPixmap],
         button_text: str,
-        on_click,
+        on_click: Callable[[], Any],
         selected: bool = False,
         price_text: str = "",
         thumb_size: int = 84,
         row_height: int = 98,
         parent=None,
+        # ✅ compatibility: placement/shop may pass extra args (e.g. category)
+        category=None,
+        **_ignored,
     ):
         super().__init__(parent)
-        self.setFixedHeight(row_height)
+        self.setFixedHeight(int(row_height))
 
         wrap = QFrame(self)
-        wrap.setStyleSheet("""
+        wrap.setStyleSheet(
+            """
             QFrame {
                 background: rgba(255,255,255,235);
                 border: 1px solid rgba(0,0,0,35);
                 border-radius: 14px;
             }
-        """)
+            """
+        )
 
         thumb = QLabel(wrap)
-        thumb.setFixedSize(thumb_size, thumb_size)
-        thumb.setStyleSheet("""
+        thumb.setFixedSize(int(thumb_size), int(thumb_size))
+        thumb.setStyleSheet(
+            """
             QLabel {
                 background: rgba(0,0,0,10);
                 border: 1px solid rgba(0,0,0,30);
                 border-radius: 12px;
             }
-        """)
+            """
+        )
+
         if pix and not pix.isNull():
             thumb.setPixmap(
-                pix.scaled(thumb_size - 8, thumb_size - 8, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                pix.scaled(
+                    int(thumb_size) - 8,
+                    int(thumb_size) - 8,
+                    Qt.KeepAspectRatio,
+                    Qt.SmoothTransformation,
+                )
             )
             thumb.setAlignment(Qt.AlignCenter)
         else:
-            thumb.setText("없음")
+            thumb.setText("-")
             thumb.setAlignment(Qt.AlignCenter)
 
         title_lb = QLabel(title, wrap)
@@ -67,7 +85,8 @@ class ThumbRow(QWidget):
         btn.setText(("✅ " if selected else "") + button_text)
         btn.setCursor(Qt.PointingHandCursor)
         btn.setMinimumHeight(34)
-        btn.setStyleSheet("""
+        btn.setStyleSheet(
+            """
             QPushButton {
                 text-align: center;
                 padding: 8px 10px;
@@ -77,7 +96,8 @@ class ThumbRow(QWidget):
                 font-weight: 900;
             }
             QPushButton:hover { background: rgba(255,255,255,255); }
-        """)
+            """
+        )
         btn.clicked.connect(on_click)
 
         mid = QVBoxLayout()
