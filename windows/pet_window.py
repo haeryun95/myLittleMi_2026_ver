@@ -1,6 +1,5 @@
 """
 windows/pet_window.py - 데스크탑 위에 떠다니는 펫 창
-
 """
 
 import random
@@ -73,15 +72,23 @@ class PetWindow(QWidget):
     # -----------------------------
     # tuning constants
     # -----------------------------
-    EDGE_MARGIN = 6                 # ✅ 기본적으로 화면 가장자리 6px 밖으로 스프라이트가 못 나감
-    CLIMB_STICK_MARGIN = 0          # ✅ climb 중엔 벽/천장에 "딱 붙기"
-    EDGE_TRIGGER_PAD = 0            # 드래그 후 climb 트리거: 거의 닿아야 발동
-    AUTO_CLIMB_EDGE_RANGE = 100     # 자동 climb은 가장자리 100px 이내에서만
-    CLIMB_COOLDOWN_SEC = 0.35       # 방해/중단 후 재발동 쿨다운
-    
-    # ✅ 천장일 때 말풍선 아래로 내릴 gap (위젯 높이도 이만큼 여유 추가)
-    BUBBLE_GAP_TOP = 60
-    BUBBLE_GAP_NORMAL = 60
+    EDGE_MARGIN_LEFT = -50
+    EDGE_MARGIN_RIGHT = -50
+    EDGE_MARGIN_TOP = -50
+    EDGE_MARGIN_BOTTOM = 0
+
+    # climb 때는 별도 stick margin 사용
+    CLIMB_STICK_MARGIN_LEFT = 0
+    CLIMB_STICK_MARGIN_RIGHT = -100   # ✅ 오른쪽 벽만 더 바짝 붙이고 싶을 때 이 값 조절
+    CLIMB_STICK_MARGIN_TOP = 0
+    CLIMB_STICK_MARGIN_BOTTOM = 0
+
+    EDGE_TRIGGER_PAD = 0
+    AUTO_CLIMB_EDGE_RANGE = 100
+    CLIMB_COOLDOWN_SEC = 0.35
+
+    # ✅ drop 착지 위치를 현재 x 근처로 제한
+    DROP_LANDING_JITTER_X = 55
 
     def __init__(self, state: PetState, app_icon: Optional[QIcon] = None):
         super().__init__()
@@ -123,8 +130,9 @@ class PetWindow(QWidget):
         self.dance_frames = load_folder_pixmaps_as_list(ANIM_DIR / "dance", SCALE_CHAR)
         self.snooze_frames = load_folder_pixmaps_as_list(ANIM_DIR / "snooze", SCALE_CHAR)
 
-        # climb: 고요 = 2장
+        # climb
         self.climb_frames = load_folder_pixmaps_as_list(ANIM_DIR / "climb", SCALE_CHAR)
+        self.pending_eat_after_drop = False
 
         # flipped caches
         self.walk_frames_flipped = make_flipped_frames(self.walk_frames) if self.walk_frames else []
@@ -156,22 +164,21 @@ class PetWindow(QWidget):
         self.char_h = any_pix.height()
 
         self.bubble_h = self.bubble.height() if self.bubble else 45
-
-        # ✅ 높이를 "아래 배치"까지 고려해서 여유 추가
-        # - 평소: bubble(위) + char
-        # - 천장: char(위) + gap + bubble(아래)
-        self.resize(self.char_w, self.char_h + self.bubble_h + self.BUBBLE_GAP_TOP)
+        self.resize(self.char_w, self.char_h + self.bubble_h)
 
         self.screen_rect = QApplication.primaryScreen().availableGeometry()
 
         # 초기 위치(바닥)
         left, top, right, bottom = self._screen_edges_exclusive()
-        start_x = random.randint(
-            left + self.EDGE_MARGIN,
-            max(left + self.EDGE_MARGIN, right - self.EDGE_MARGIN - self.char_w),
-        )
-        start_y = bottom - self.EDGE_MARGIN - self._sprite_h_total()
-        self.move(start_x, start_y)
+        min_x = self._left_target()
+        max_x = self._max_x()
+
+        if max_x < min_x:
+            max_x = min_x
+
+        start_x = random.randint(int(min_x), int(max_x))
+        start_y = bottom - self.EDGE_MARGIN_BOTTOM - self._sprite_h_total()
+        self.move(int(start_x), int(start_y))
 
         # drag
         self.dragging = False
@@ -301,7 +308,7 @@ class PetWindow(QWidget):
             self.update()
 
     # -----------------------------
-    # bubble API (호환 유지)
+    # bubble API
     # -----------------------------
     def say(self, text: str, duration: float = 2.2):
         self.say_text = text
@@ -309,7 +316,6 @@ class PetWindow(QWidget):
         self.update()
 
     def show_bubble(self, text: str, bubble_sec: float = 2.2):
-        """외부 호환용: show_bubble() 유지."""
         self.say(text, duration=bubble_sec)
 
     # -----------------------------
@@ -323,41 +329,47 @@ class PetWindow(QWidget):
     def do_jump(self, strength: int = 12):
         """바닥에 있을 때만 점프."""
         left, top, right, bottom = self._screen_edges_exclusive()
-        floor_y = bottom - self.EDGE_MARGIN - self._sprite_h_total()
+        floor_y = bottom - self.EDGE_MARGIN_BOTTOM - self._sprite_h_total()
         if abs(self.y() - floor_y) <= 2:
             self.vy = -abs(int(strength))
 
     # -----------------------------
-    # ✅ dynamic char_y / sprite height
+    # dynamic char_y / sprite height
     # -----------------------------
     def _is_top_climb(self) -> bool:
         return self.is_climbing and self.mode == "climb" and self.climb_surface == "top"
 
     def _current_char_y(self) -> int:
-        """
-        ✅ 핵심:
-        - 평소: bubble을 위에 그리고 캐릭터는 아래(bubble_h)에 그림
-        - 천장 climb: 캐릭터를 위(0)에 그리고 bubble은 아래로 가야 하므로 char_y=0
-        """
         return 0 if self._is_top_climb() else self.bubble_h
 
     def _sprite_h_total(self) -> int:
-        """위젯에서 '스프라이트 기준' 전체 높이(캐릭터 + bubble영역 포함)를 계산."""
-        # 화면 충돌/클램프는 "캐릭터가 차지하는 영역"만 맞추면 되는데,
-        # 이 앱은 위젯 자체가 말풍선을 포함하니까, 바닥 계산에 위젯 전체 높이를 쓰는 게 안전함.
         return self.height()
 
     # -----------------------------
-    # geometry helpers (exclusive edges)
+    # geometry helpers
     # -----------------------------
     def _screen_edges_exclusive(self) -> Tuple[int, int, int, int]:
-        """QRect.right/bottom(inclusive) 대신 exclusive 경계."""
         s = self.screen_rect
         left = s.left()
         top = s.top()
-        right = s.left() + s.width()    # exclusive
-        bottom = s.top() + s.height()   # exclusive
+        right = s.left() + s.width()
+        bottom = s.top() + s.height()
         return left, top, right, bottom
+
+    def _left_target(self) -> int:
+        left, top, right, bottom = self._screen_edges_exclusive()
+        return left + self.EDGE_MARGIN_LEFT
+
+    def _right_target(self) -> int:
+        left, top, right, bottom = self._screen_edges_exclusive()
+        return right - self.EDGE_MARGIN_RIGHT
+
+    def _top_target(self) -> int:
+        left, top, right, bottom = self._screen_edges_exclusive()
+        return top + self.EDGE_MARGIN_TOP
+
+    def _max_x(self) -> int:
+        return self._right_target() - self.char_w
 
     # 스프라이트 기준 좌표
     def _sprite_left(self) -> int:
@@ -372,52 +384,73 @@ class PetWindow(QWidget):
     def _sprite_bottom(self) -> int:
         return self.y() + self._current_char_y() + self.char_h
 
-    def _clamp_xy_with_custom_margin(self, x: int, y: int, m: int) -> Tuple[int, int]:
-        """스프라이트가 화면 가장자리에서 m 픽셀 밖으로 못 나가게 클램프."""
+    def _clamp_xy_with_custom_margin(
+        self,
+        x: int,
+        y: int,
+        left_margin: Optional[int] = None,
+        right_margin: Optional[int] = None,
+        top_margin: Optional[int] = None,
+        bottom_margin: Optional[int] = None,
+    ) -> Tuple[int, int]:
         left, top, right, bottom = self._screen_edges_exclusive()
 
-        min_x = left + m
-        max_x = right - m - self.char_w
+        lm = self.EDGE_MARGIN_LEFT if left_margin is None else left_margin
+        rm = self.EDGE_MARGIN_RIGHT if right_margin is None else right_margin
+        tm = self.EDGE_MARGIN_TOP if top_margin is None else top_margin
+        bm = self.EDGE_MARGIN_BOTTOM if bottom_margin is None else bottom_margin
 
-        # ✅ char_y가 상황별로 달라지므로 current_char_y 사용
         char_y = self._current_char_y()
-        min_y = top + m - char_y
-        max_y = bottom - m - (char_y + self.char_h)
+
+        min_x = left + lm
+        max_x = right - rm - self.char_w
+
+        min_y = top + tm - char_y
+        max_y = bottom - bm - (char_y + self.char_h)
 
         x = max(min_x, min(max_x, x))
         y = max(min_y, min(max_y, y))
         return x, y
 
-    def _clamp_xy_with_margin(self, x: int, y: int) -> Tuple[int, int]:
-        """기본(EDGE_MARGIN) 클램프."""
-        return self._clamp_xy_with_custom_margin(x, y, self.EDGE_MARGIN)
-
     def _snap_to_surface(self, surface: str):
-        """climb 중엔 CLIMB_STICK_MARGIN(0)로 완전 밀착, 평소엔 EDGE_MARGIN."""
+        """climb 중엔 방향별 stick margin으로 밀착."""
         left, top, right, bottom = self._screen_edges_exclusive()
-        m = self.CLIMB_STICK_MARGIN if self.is_climbing else self.EDGE_MARGIN
-
-        x, y = self.x(), self.y()
         char_y = self._current_char_y()
 
-        if surface == "left":
-            x = left + m
-        elif surface == "right":
-            x = right - m - self.char_w
-        elif surface == "top":
-            y = top + m - char_y
+        if self.is_climbing:
+            lm = self.CLIMB_STICK_MARGIN_LEFT
+            rm = self.CLIMB_STICK_MARGIN_RIGHT
+            tm = self.CLIMB_STICK_MARGIN_TOP
+            bm = self.CLIMB_STICK_MARGIN_BOTTOM
+            left_target = left + lm
+            right_target = right - rm
+            top_target = top + tm
+        else:
+            lm = self.EDGE_MARGIN_LEFT
+            rm = self.EDGE_MARGIN_RIGHT
+            tm = self.EDGE_MARGIN_TOP
+            bm = self.EDGE_MARGIN_BOTTOM
+            left_target = self._left_target()
+            right_target = self._right_target()
+            top_target = self._top_target()
 
-        x, y = self._clamp_xy_with_custom_margin(int(x), int(y), m)
-        self.move(x, y)
+        x, y = self.x(), self.y()
+
+        if surface == "left":
+            x = left_target
+        elif surface == "right":
+            x = right_target - self.char_w
+        elif surface == "top":
+            y = top_target - char_y
+
+        x, y = self._clamp_xy_with_custom_margin(int(x), int(y), lm, rm, tm, bm)
+        self.move(int(x), int(y))
 
     def _pick_nearest_climb_surface(self) -> str:
         """가장 가까운 면 선택. 동점이면 top보다 left/right 우선."""
-        left, top, right, bottom = self._screen_edges_exclusive()
-        m = self.EDGE_MARGIN
-
-        dist_left = abs(self._sprite_left() - (left + m))
-        dist_right = abs((right - m) - self._sprite_right())
-        dist_top = abs(self._sprite_top() - (top + m))
+        dist_left = abs(self._sprite_left() - self._left_target())
+        dist_right = abs(self._sprite_right() - self._right_target())
+        dist_top = abs(self._sprite_top() - self._top_target())
 
         best = min(dist_left, dist_right, dist_top)
         candidates = []
@@ -435,22 +468,19 @@ class PetWindow(QWidget):
 
     def _is_within_auto_climb_range(self) -> bool:
         """자동 climb은 가장자리 100px 이내일 때만."""
-        left, top, right, bottom = self._screen_edges_exclusive()
-        m = self.EDGE_MARGIN
-        dist_left = abs(self._sprite_left() - (left + m))
-        dist_right = abs((right - m) - self._sprite_right())
-        dist_top = abs(self._sprite_top() - (top + m))
+        dist_left = abs(self._sprite_left() - self._left_target())
+        dist_right = abs(self._sprite_right() - self._right_target())
+        dist_top = abs(self._sprite_top() - self._top_target())
         return min(dist_left, dist_right, dist_top) <= self.AUTO_CLIMB_EDGE_RANGE
 
     def _is_on_edge_for_drag_trigger(self) -> bool:
-        """드래그 후 클라임 트리거(스프라이트가 거의 닿으면)."""
-        left, top, right, bottom = self._screen_edges_exclusive()
-        m = self.EDGE_MARGIN
+        """드래그 후 클라임 트리거."""
         pad = self.EDGE_TRIGGER_PAD
 
-        at_left = self._sprite_left() <= left + m + pad
-        at_right = self._sprite_right() >= right - m - pad
-        at_top = self._sprite_top() <= top + m + pad
+        at_left = self._sprite_left() <= self._left_target() + pad
+        at_right = self._sprite_right() >= self._right_target() - pad
+        at_top = self._sprite_top() <= self._top_target() + pad
+
         return at_left or at_right or at_top
 
     # -----------------------------
@@ -467,6 +497,16 @@ class PetWindow(QWidget):
             pass
 
     def trigger_eat_visual(self):
+        if self.is_climbing:
+            self.pending_eat_after_drop = True
+            self._stop_climb()
+            self._start_drop()
+            return
+
+        if self.is_dropping:
+            self.pending_eat_after_drop = True
+            return
+
         self.set_mode("eat", sec=1.5)
         self.start_shake(sec=EAT_SHAKE_DURATION, strength=EAT_SHAKE_STRENGTH)
 
@@ -489,11 +529,9 @@ class PetWindow(QWidget):
         self.frame_i = 0
         self.mode_until = time.time() + float(sec)
 
-        # dance: 랜덤 좌우 반전 고정
         if mode == "dance":
             self.dance_facing_left = random.choice([True, False])
 
-        # eat: 프레임 고정 선택
         if mode == "eat" and self.eat_frames:
             self.current_action_pixmap = random.choice(self.eat_frames)
         else:
@@ -502,7 +540,6 @@ class PetWindow(QWidget):
         if mode in ANIM_SPEED_MS:
             self.anim_timer.start(ANIM_SPEED_MS[mode])
         elif mode == "climb":
-            # climb은 phase가 anim_timer를 start/stop 제어
             pass
         elif mode in ("sit", "dance"):
             self.anim_timer.start(150)
@@ -546,7 +583,6 @@ class PetWindow(QWidget):
         self.vx = 0
         self.vy = 0
 
-        # 완전 밀착 스냅
         self._snap_to_surface(self.climb_surface)
 
         self.climb_phase = "hold"
@@ -569,17 +605,19 @@ class PetWindow(QWidget):
             return
 
         left, top, right, bottom = self._screen_edges_exclusive()
-        m = self.CLIMB_STICK_MARGIN
+        lm = self.CLIMB_STICK_MARGIN_LEFT
+        rm = self.CLIMB_STICK_MARGIN_RIGHT
+        tm = self.CLIMB_STICK_MARGIN_TOP
+        bm = self.CLIMB_STICK_MARGIN_BOTTOM
+
         x, y = self.x(), self.y()
         step = self.climb_dir * self.climb_step_px
-
-        # ✅ char_y가 상황에 따라 달라지므로 여기서도 current_char_y 적용
         char_y = self._current_char_y()
 
         if self.climb_surface in ("left", "right"):
             y += step
-            min_y = top + m - char_y
-            max_y = bottom - m - (char_y + self.char_h)
+            min_y = top + tm - char_y
+            max_y = bottom - bm - (char_y + self.char_h)
             if y <= min_y:
                 y = min_y
                 self.climb_dir *= -1
@@ -589,49 +627,42 @@ class PetWindow(QWidget):
 
         elif self.climb_surface == "top":
             x += step
-            min_x = left + m
-            max_x = right - m - self.char_w
+            min_x = left + lm
+            max_x = right - rm - self.char_w
             if x <= min_x:
                 x = min_x
                 self.climb_dir *= -1
             elif x >= max_x:
                 x = max_x
                 self.climb_dir *= -1
-            y = top + m - char_y
+            y = top + tm - char_y
 
-        # 표면 고정(완전 밀착)
         if self.climb_surface == "left":
-            x = left + m
+            x = left + lm
         elif self.climb_surface == "right":
-            x = right - m - self.char_w
+            x = right - rm - self.char_w
         elif self.climb_surface == "top":
-            y = top + m - char_y
+            y = top + tm - char_y
 
-        x, y = self._clamp_xy_with_custom_margin(int(x), int(y), m)
+        x, y = self._clamp_xy_with_custom_margin(int(x), int(y), lm, rm, tm, bm)
         self.move(x, y)
 
     # -----------------------------
     # drop
     # -----------------------------
-    def _pick_random_landing_x(self) -> int:
-        left, top, right, bottom = self._screen_edges_exclusive()
-        m = self.EDGE_MARGIN
-        min_x = left + m
-        max_x = right - m - self.char_w
-        center = (min_x + max_x) // 2
+    def _pick_drop_landing_x_near_current(self) -> int:
+        min_x = self._left_target()
+        max_x = self._max_x()
 
-        min_away = 90
-        candidate = random.randint(min_x, max_x)
-        for _ in range(10):
-            x = random.randint(min_x, max_x)
-            if abs(x - center) >= min_away:
-                candidate = x
-                break
-        return candidate
+        if max_x < min_x:
+            max_x = min_x
+
+        candidate = self.x() + random.randint(-self.DROP_LANDING_JITTER_X, self.DROP_LANDING_JITTER_X)
+        return int(max(min_x, min(max_x, candidate)))
 
     def _start_drop(self):
         self.is_dropping = True
-        self.drop_target_x = self._pick_random_landing_x()
+        self.drop_target_x = self._pick_drop_landing_x_near_current()
         self.vy = -9
         self.set_mode("normal", sec=99999)
 
@@ -648,7 +679,6 @@ class PetWindow(QWidget):
 
         now = time.time()
 
-        # 자동 climb: 가장자리 100px 이내에서만
         if now >= self.climb_cooldown_until:
             if self._is_within_auto_climb_range() and random.random() < 0.04:
                 self._start_climb(None)
@@ -702,7 +732,7 @@ class PetWindow(QWidget):
             self.was_dragged = True
 
         target = current_pos - self.drag_offset
-        x, y = self._clamp_xy_with_margin(target.x(), target.y())
+        x, y = self._clamp_xy_with_custom_margin(target.x(), target.y())
         self.move(x, y)
         e.accept()
 
@@ -716,7 +746,6 @@ class PetWindow(QWidget):
         if self.mode == "drag":
             self.set_mode("normal", sec=99999)
 
-        # 드래그 후 화면 끝에 놓이면 climb
         if self.was_dragged and (not self.sleeping) and (not self.is_climbing) and (not self.is_dropping):
             if self._is_on_edge_for_drag_trigger():
                 self._start_climb(self._pick_nearest_climb_surface())
@@ -736,7 +765,6 @@ class PetWindow(QWidget):
     # frame advance
     # -----------------------------
     def advance_frame(self):
-        # climb은 move 단계에서만 프레임 진행 + 이동 동기화
         if self.mode == "climb" and self.is_climbing:
             if self.climb_phase != "move":
                 return
@@ -764,7 +792,6 @@ class PetWindow(QWidget):
     def tick_logic(self):
         now = time.time()
 
-        # sleeping
         if self.sleeping:
             if now >= self.sleep_end_at or getattr(self.state, "energy", 0) >= 99.9:
                 self.sleeping = False
@@ -777,7 +804,6 @@ class PetWindow(QWidget):
             self.update()
             return
 
-        # normal face random
         if self.mode == "normal" and now > self.face_until and now >= self.next_normal_change:
             mood = getattr(self.state, "mood", 50)
             if mood < 30:
@@ -790,7 +816,6 @@ class PetWindow(QWidget):
                 self.current_face = random.choice(pool)
             self.next_normal_change = now + NORMAL_RANDOM_INTERVAL
 
-        # random talk
         if self.mode == "normal" and (not self.dragging) and now > self.say_until:
             if random.random() < 0.0005 and self.random_dialogues:
                 self.say(random.choice(self.random_dialogues), 3.0)
@@ -814,7 +839,7 @@ class PetWindow(QWidget):
             self.vy += self.gravity
             y += self.vy
 
-            floor_y = bottom - self.EDGE_MARGIN - self._sprite_h_total()
+            floor_y = bottom - self.EDGE_MARGIN_BOTTOM - self._sprite_h_total()
             if y >= floor_y:
                 y = floor_y
                 self.vy = 0
@@ -822,24 +847,26 @@ class PetWindow(QWidget):
                 self.set_mode("normal", sec=99999)
                 self.climb_cooldown_until = time.time() + self.CLIMB_COOLDOWN_SEC
 
-            x, y = self._clamp_xy_with_margin(int(x), int(y))
+                if self.pending_eat_after_drop:
+                    self.pending_eat_after_drop = False
+                    self.set_mode("eat", sec=1.5)
+                    self.start_shake(sec=EAT_SHAKE_DURATION, strength=EAT_SHAKE_STRENGTH)
+
+            x, y = self._clamp_xy_with_custom_margin(int(x), int(y))
             self.move(x, y)
             self.update()
             return
 
         # climb
         if self.is_climbing:
-            # 항상 밀착
             self._snap_to_surface(self.climb_surface)
 
-            # 종료 -> drop
             if now >= self.climb_total_end_at:
                 self._stop_climb()
                 self._start_drop()
                 self.update()
                 return
 
-            # hold/move 전환
             if now >= self.climb_phase_until:
                 self.climb_phase = "move" if self.climb_phase == "hold" else "hold"
                 self._schedule_next_climb_phase(now)
@@ -847,24 +874,21 @@ class PetWindow(QWidget):
             self.update()
             return
 
-        # 모드 자동 종료
         if now > self.mode_until and self.mode in ("walk", "sleep", "speak", "eat", "sit", "dance", "snooze"):
             self.set_mode("normal", 99999)
 
-        # walk
         if self.mode == "walk":
             x += self.vx
 
-        # gravity
         self.vy += self.gravity
         y += self.vy
 
-        floor_y = bottom - self.EDGE_MARGIN - self._sprite_h_total()
+        floor_y = bottom - self.EDGE_MARGIN_BOTTOM - self._sprite_h_total()
         if y >= floor_y:
             y = floor_y
             self.vy = 0
 
-        x, y = self._clamp_xy_with_margin(int(x), int(y))
+        x, y = self._clamp_xy_with_custom_margin(int(x), int(y))
         self.move(x, y)
         self.update()
 
@@ -879,12 +903,10 @@ class PetWindow(QWidget):
             now = time.time()
             pix = None
 
-            # drag
             if self.mode == "drag" and self.drag_frames:
                 frames = self.drag_frames_flipped if self.facing_left else self.drag_frames
                 pix = frames[self.frame_i % len(frames)]
 
-            # climb
             elif self.mode == "climb" and self.climb_frames:
                 idx = self.frame_i % len(self.climb_frames)
                 if self.climb_surface == "right":
@@ -896,38 +918,30 @@ class PetWindow(QWidget):
                 else:
                     pix = self.climb_frames_right[idx]
 
-            # dance
             elif self.mode == "dance" and self.dance_frames:
                 frames = self.dance_frames_flipped if self.dance_facing_left else self.dance_frames
                 pix = frames[self.frame_i % len(frames)] if frames else None
 
-            # snooze
             elif self.mode == "snooze" and self.snooze_frames:
                 pix = self.snooze_frames[self.frame_i % len(self.snooze_frames)] if self.snooze_frames else None
 
-            # eat
             elif self.mode == "eat" and self.current_action_pixmap:
                 pix = self.current_action_pixmap
 
-            # speak
             elif self.mode == "speak" and self.speak_frames:
                 pix = self.speak_frames[self.frame_i % len(self.speak_frames)] if self.speak_frames else None
 
-            # sit
             elif self.mode == "sit" and self.sit_frames:
                 frames = self.sit_frames_flipped if self.facing_left else self.sit_frames
                 pix = frames[self.frame_i % len(frames)] if frames else None
 
-            # walk
             elif self.mode == "walk" and self.walk_frames:
                 frames = self.walk_frames_flipped if self.vx < 0 else self.walk_frames
                 pix = frames[self.frame_i % len(frames)] if frames else None
 
-            # sleep
             elif self.mode == "sleep" and self.sleep_frames:
                 pix = self.sleep_frames[self.frame_i % len(self.sleep_frames)] if self.sleep_frames else None
 
-            # default face
             else:
                 mood = getattr(self.state, "mood", 50)
                 target_key = "happy" if mood > 70 else "sad" if mood < 30 else "normal"
@@ -938,21 +952,14 @@ class PetWindow(QWidget):
             if not pix:
                 return
 
-            # shake
             dx = dy = 0
             if now < self.shake_until and self.shake_strength > 0:
                 dx = random.randint(-self.shake_strength, self.shake_strength)
                 dy = random.randint(-self.shake_strength, self.shake_strength)
 
-            # ✅ 현재 char_y(천장 climb이면 0, 아니면 bubble_h)
             char_y = self._current_char_y()
-
-            # draw character
             painter.drawPixmap(dx, dy + char_y, pix)
 
-            # bubble
-
-            # bubble
             if self.say_text and now < self.say_until:
                 font = QFont("Galmuri11", 10)
                 font.setBold(True)
@@ -961,13 +968,10 @@ class PetWindow(QWidget):
                 is_top = self._is_top_climb()
                 char_y = self._current_char_y()
 
-                # ✅ bubble_pix 먼저 결정 (천장일 때만 90도 회전)
-                bubble_pix = self.bubble  # 기본
+                bubble_pix = self.bubble
                 if self.bubble and is_top:
-                    # 90도 회전: Qt에서 +는 반시계, 시계방향 90을 원하면 -90
                     bubble_pix = _transform_pixmap_centered(self.bubble, rotate_deg=-180)
 
-                # ✅ 회전된 pix 기준으로 크기 계산해야 중심이 맞음
                 if self.bubble:
                     bw = bubble_pix.width()
                     bh = bubble_pix.height()
@@ -975,17 +979,30 @@ class PetWindow(QWidget):
                     bw = 120
                     bh = 45
 
+                # 기본은 가운데
                 bx = (self.width() - bw) // 2
 
-                # ✅ 핵심: 천장일 때만 캐릭터 아래로, 간격 TOP_BUBBLE_GAP만큼
                 if is_top:
-                    # 캐릭터 바로 아래 기준
-                    by = (char_y + self.char_h) + self.BUBBLE_GAP_TOP + dy
+                    # 천장에서는 아래
+                    by = (char_y + self.char_h) + dy - 100
+
+                elif self.mode == "climb" and self.climb_surface == "right":
+                    # ✅ 오른쪽 벽 climb: 말풍선을 펫의 왼쪽으로
+                    bx = dx - bw + 40
+                    by = (char_y - bh) + dy + 60
+
+                elif self.mode == "climb" and self.climb_surface == "left":
+                    # ✅ 왼쪽 벽 climb: 말풍선을 펫의 오른쪽으로
+                    bx = self.char_w + dx 
+                    by = (char_y - bh) + dy + 60
+
                 else:
-                    # 평소: 캐릭터 위
-                    by = (char_y - bh) + self.BUBBLE_GAP_NORMAL + dy
+                    # 평소: 위
+                    by = (char_y - bh) + dy + 60
+
+                bx = max(0, min(bx, self.width() - bw))
                 by = max(0, min(by, self.height() - bh))
-                bubble_rect = QRect(bx + dx, by, bw, bh)
+                bubble_rect = QRect(int(bx), int(by), bw, bh)
 
                 if self.bubble:
                     painter.drawPixmap(bx + dx, by, bubble_pix)

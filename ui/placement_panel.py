@@ -2,7 +2,9 @@
 ui/placement_panel.py - 배치 패널
 
 요구사항 반영:
-- 가구상점과 동일한 스타일링(반투명 패널 + 동일 리스트 스타일)
+- 가구상점과 동일한 스타일링
+- 핑크 배경 (#fee7f4)
+- 창 크기 확장 (스크롤 최소화)
 - 테마 버튼 이미지 시도 적용(없으면 기존 스타일 유지)
 - i18n (state.lang 기반)
 """
@@ -12,11 +14,10 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
 from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QLabel, QListWidget, QListWidgetItem, QPushButton, QVBoxLayout, QWidget
 
 try:
-    from config import ASSET_DIR  # type: ignore
+    from config import ASSET_DIR
 except Exception:
     ASSET_DIR = Path("asset")
 
@@ -24,6 +25,9 @@ from utils.json_utils import get_catalog
 from ui.thumb_row import ThumbRow
 
 
+# ----------------------------
+# i18n
+# ----------------------------
 def _guess_lang_from_state(state) -> str:
     for attr in ("lang", "language", "locale", "selected_lang"):
         v = getattr(state, attr, None)
@@ -53,20 +57,23 @@ def _t(lang: Dict, path: str, fallback: str = ""):
     return cur if isinstance(cur, str) else fallback
 
 
+# ----------------------------
+# theme assets
+# ----------------------------
 def _resolve_ui_asset(state, filename: str) -> Optional[str]:
     theme = getattr(state, "theme", None) or getattr(state, "selected_theme", None) or "default"
     theme = str(theme).strip() if theme else "default"
+
     cands = [
         ASSET_DIR / "ui" / theme / filename,
         ASSET_DIR / "ui" / "default" / filename,
         ASSET_DIR / "ui" / filename,
     ]
+
     for p in cands:
-        try:
-            if p.exists():
-                return str(p.as_posix())
-        except Exception:
-            pass
+        if p.exists():
+            return str(p.as_posix())
+
     return None
 
 
@@ -74,6 +81,7 @@ def _apply_themed_button(btn: QPushButton, state, base_name: str):
     normal = _resolve_ui_asset(state, f"{base_name}.png")
     if not normal:
         return
+
     hover = _resolve_ui_asset(state, f"{base_name}_hover.png") or normal
     pressed = _resolve_ui_asset(state, f"{base_name}_pressed.png") or normal
 
@@ -94,30 +102,61 @@ def _apply_themed_button(btn: QPushButton, state, base_name: str):
     """)
 
 
+# ----------------------------
+# panel style
+# ----------------------------
 def _apply_panel_style(w: QWidget):
-    # ✅ 배치/가구상점 공통 룩
+
     w.setStyleSheet("""
         QWidget#PlacementPanel {
-            background: rgba(255, 255, 255, 190);
-            border: 1px solid rgba(0, 0, 0, 70);
-            border-radius: 12px;
+            background: #fee7f4;
+            border: 1px solid rgba(0,0,0,60);
+            border-radius: 14px;
         }
+
         QLabel {
-            color: rgba(0,0,0,200);
+            color: #5a4050;
             font-weight: 900;
         }
+
         QListWidget {
-            background: rgba(255,255,255,140);
-            border: 1px solid rgba(0,0,0,55);
-            border-radius: 10px;
+            background: rgba(255,255,255,0.7);
+            border: 1px solid rgba(0,0,0,50);
+            border-radius: 12px;
             padding: 6px;
+        }
+
+        QListWidget::item {
+            margin: 4px;
+        }
+
+        QScrollBar:vertical {
+            background: rgba(255,255,255,0.3);
+            width: 10px;
+            border-radius: 5px;
+        }
+
+        QScrollBar::handle:vertical {
+            background: rgba(230,170,200,0.9);
+            border-radius: 5px;
+            min-height: 20px;
+        }
+
+        QScrollBar::add-line:vertical,
+        QScrollBar::sub-line:vertical {
+            height: 0px;
         }
     """)
 
 
+# ----------------------------
+# main panel
+# ----------------------------
 class PlacementPanel(QWidget):
+
     def __init__(self, state, on_changed: Callable[[], None], parent=None):
         super().__init__(parent)
+
         self.setObjectName("PlacementPanel")
 
         self.state = state
@@ -125,7 +164,9 @@ class PlacementPanel(QWidget):
 
         self._lang = _load_lang_dict(_guess_lang_from_state(state))
 
-        self.setFixedSize(270, 320)
+        # ⭐ 창 크기 확대
+        self.setFixedSize(360, 520)
+
         _apply_panel_style(self)
 
         title = QLabel(_t(self._lang, "ui.place", "배치"))
@@ -141,45 +182,58 @@ class PlacementPanel(QWidget):
         # fallback style
         self.close_btn.setStyleSheet("""
             QPushButton {
-                background: rgba(255,255,255,190);
+                background: rgba(255,255,255,0.9);
                 border: 1px solid rgba(0,0,0,60);
-                border-radius: 10px;
+                border-radius: 12px;
                 padding: 6px 12px;
                 font-weight: 900;
-                min-height: 28px;
+                min-height: 30px;
+                color: #5a4050;
             }
-            QPushButton:hover { background: rgba(255,255,255,220); }
+
+            QPushButton:hover {
+                background: rgba(255,255,255,1.0);
+            }
         """)
+
         _apply_themed_button(self.close_btn, self.state, "button_90x36")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(10)
+
         layout.addWidget(title)
         layout.addWidget(self.list, 1)
         layout.addWidget(self.close_btn)
 
         self._populate()
 
+    # ----------------------------
+    # populate list
+    # ----------------------------
     def _populate(self):
+
         self.list.clear()
         catalog = get_catalog()
 
-        # ✅ 기존 카테고리 그대로(원본 로직 유지)
         for cat in ["wallpaper", "house", "wheel", "deco", "bridge", "flower"]:
+
             items: List[Dict] = catalog.get(cat, [])
             if not items:
                 continue
 
-            # 섹션 헤더(그대로)
             header_item = QListWidgetItem()
+
             header = QLabel(f"• {cat}")
-            header.setStyleSheet("font-weight: 900; padding: 6px 2px;")
+            header.setStyleSheet("font-weight:900; padding:6px 2px;")
+
             header_item.setSizeHint(QSize(100, 26))
+
             self.list.addItem(header_item)
             self.list.setItemWidget(header_item, header)
 
             for it in items:
+
                 iid = it.get("id")
                 name = it.get("name", iid or "")
                 price = int(it.get("price", 0) or 0)
@@ -218,17 +272,23 @@ class PlacementPanel(QWidget):
 
                 li = QListWidgetItem()
                 li.setSizeHint(row.sizeHint())
+
                 self.list.addItem(li)
                 self.list.setItemWidget(li, row)
 
+    # ----------------------------
+    # select item
+    # ----------------------------
     def _on_select(self, cat: str, item_id: str):
-        # ✅ 기존 동작 유지: 소유 여부 상관없이 "선택"은 가능(프로젝트 정책대로)
+
         try:
             self.state.selected_bg[cat] = item_id
         except Exception:
             pass
+
         try:
             self.on_changed()
         except Exception:
             pass
+
         self._populate()
